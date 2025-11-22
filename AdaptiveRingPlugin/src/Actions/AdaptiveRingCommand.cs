@@ -14,8 +14,8 @@ namespace Loupedeck.AdaptiveRingPlugin.Actions
     public abstract class AdaptiveRingCommandBase : PluginDynamicCommand
     {
         private readonly int _position;
-        private AdaptiveRingPlugin _plugin;
-        private ActionsRingManager _manager;
+        private AdaptiveRingPlugin? _plugin;
+        private ActionsRingManager? _manager;
 
         protected AdaptiveRingCommandBase(int position, string name)
             : base(displayName: name, description: $"Adaptive action for position {position + 1}", groupName: "Adaptive Ring")
@@ -45,7 +45,7 @@ namespace Loupedeck.AdaptiveRingPlugin.Actions
             return true;
         }
 
-        private void OnActionsUpdated(object sender, EventArgs e)
+        private void OnActionsUpdated(object? sender, EventArgs e)
         {
             this.ActionImageChanged();
         }

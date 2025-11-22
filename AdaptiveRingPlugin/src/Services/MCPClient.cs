@@ -259,7 +259,7 @@ public class MCPClient : IDisposable
                     throw new InvalidOperationException($"MCP error: {response.Error.Message}");
                 }
 
-                return response.Result;
+                return response!.Result;
             }
             else
             {

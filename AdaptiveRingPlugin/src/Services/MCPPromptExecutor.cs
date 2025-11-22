@@ -2,44 +2,41 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
 {
     using System;
     using System.Collections.Generic;
+    using System.Diagnostics;
+    using System.IO;
     using System.Linq;
+    using System.Reflection;
     using System.Text.Json;
     using System.Threading.Tasks;
     using Loupedeck.AdaptiveRingPlugin.Models;
     using Loupedeck.AdaptiveRingPlugin.Models.ActionData;
-    using Mscc.GenerativeAI;
 
     /// <summary>
     /// Executes MCP (Model Context Protocol) prompt actions by:
     /// 1. Connecting to MCP servers via stdio
-    /// 2. Using Gemini to orchestrate tool calls
+    /// 2. Using Python Intelligence Service to orchestrate tool calls
     /// 3. Executing the tools and returning results
     /// </summary>
     public class MCPPromptExecutor
     {
         private readonly AppDatabase _database;
-        private readonly GenerativeModel? _geminiModel;
+        private readonly string _scriptPath;
+        private readonly string _pythonPath = "python";
         private static readonly Dictionary<string, MCPClient> _connectionPool = new();
         private static readonly object _poolLock = new object();
 
         public MCPPromptExecutor(AppDatabase database)
         {
             _database = database ?? throw new ArgumentNullException(nameof(database));
-
-            // Initialize Gemini
-            var apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-            if (!string.IsNullOrWhiteSpace(apiKey))
+            try
             {
-                try
-                {
-                    var googleAI = new GoogleAI(apiKey);
-                    _geminiModel = googleAI.GenerativeModel(model: "gemini-2.5-flash");
-                    PluginLog.Info("MCPPromptExecutor: Gemini API initialized");
-                }
-                catch (Exception ex)
-                {
-                    PluginLog.Error($"MCPPromptExecutor: Failed to initialize Gemini: {ex.Message}");
-                }
+                _scriptPath = IntelligenceServiceLocator.GetScriptPath();
+                PluginLog.Info($"MCPPromptExecutor using script at: {_scriptPath}");
+            }
+            catch (Exception ex)
+            {
+                _scriptPath = string.Empty;
+                PluginLog.Error($"MCPPromptExecutor: Failed to prepare IntelligenceService.py: {ex.Message}");
             }
         }
 
@@ -139,18 +136,18 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
         }
 
         /// <summary>
-        /// Use LLM to orchestrate which tools to call based on the description.
+        /// Use Python Intelligence Service to orchestrate which tools to call based on the description.
         /// </summary>
         private async Task ExecuteLLMOrchestratedAsync(MCPClient mcpClient, PromptActionData promptData)
         {
-            if (_geminiModel == null)
+            if (string.IsNullOrEmpty(_scriptPath) || !File.Exists(_scriptPath))
             {
-                PluginLog.Warning("MCPPromptExecutor: Gemini not available for LLM orchestration");
-                ShowNotification("❌ LLM not available");
+                PluginLog.Warning("MCPPromptExecutor: IntelligenceService script not found");
+                ShowNotification("❌ Intelligence Service missing");
                 return;
             }
 
-            PluginLog.Info($"MCPPromptExecutor: Using LLM to orchestrate: {promptData.Description}");
+            PluginLog.Info($"MCPPromptExecutor: Using Python Service to orchestrate: {promptData.Description}");
             ShowNotification($"🤖 Analyzing: {promptData.Description}...");
 
             // List available tools from MCP server
@@ -162,31 +159,55 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
                 return;
             }
 
-            PluginLog.Info($"MCPPromptExecutor: Found {tools.Count} tools, asking Gemini...");
-
-            // Build prompt for Gemini
-            var prompt = $@"You have access to the following tools:
-
-{string.Join("\n", tools.Select(t => $"- {t.Name}: {t.Description ?? "No description"}"))}
-
-User request: {promptData.Description}
-
-Which tool should be called and with what arguments? Respond in JSON format:
-{{
-  ""tool"": ""tool_name"",
-  ""arguments"": {{}}
-}}
-
-If no tool is appropriate, respond with: {{""tool"": ""none""}}";
+            PluginLog.Info($"MCPPromptExecutor: Found {tools.Count} tools, asking Python Service...");
 
             try
             {
-                var response = await _geminiModel.GenerateContent(prompt);
-                var responseText = response.Text?.Trim() ?? "";
+                var toolsJson = JsonSerializer.Serialize(tools);
+                
+                // Escape arguments for command line
+                var toolsJsonEscaped = toolsJson.Replace("\\", "\\\\").Replace("\"", "\\\"");
+                var description = promptData.Description ?? "";
+                var promptEscaped = description.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
-                PluginLog.Info($"MCPPromptExecutor: Gemini response: {responseText}");
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = _pythonPath,
+                    Arguments = $"\"{_scriptPath}\" --mode orchestrate --tools \"{toolsJsonEscaped}\" --prompt \"{promptEscaped}\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    WorkingDirectory = Path.GetDirectoryName(_scriptPath)
+                };
 
-                // Parse Gemini's response
+                using var process = new Process { StartInfo = startInfo };
+                process.Start();
+
+                var outputTask = process.StandardOutput.ReadToEndAsync();
+                var errorTask = process.StandardError.ReadToEndAsync();
+
+                await Task.WhenAll(outputTask, errorTask);
+                process.WaitForExit();
+
+                var responseText = outputTask.Result;
+                var error = errorTask.Result;
+
+                if (!string.IsNullOrWhiteSpace(error))
+                {
+                    PluginLog.Info($"[Python Service] {error.Trim()}");
+                }
+
+                if (process.ExitCode != 0)
+                {
+                    PluginLog.Error($"Python service exited with code {process.ExitCode}");
+                    ShowNotification("❌ AI Service Error");
+                    return;
+                }
+
+                PluginLog.Info($"MCPPromptExecutor: Python response: {responseText}");
+
+                // Parse Python response
                 var toolCall = ParseToolCall(responseText);
                 if (toolCall != null && toolCall.Value.ToolName != "none")
                 {
@@ -213,8 +234,8 @@ If no tool is appropriate, respond with: {{""tool"": ""none""}}";
             }
             catch (Exception ex)
             {
-                PluginLog.Error($"MCPPromptExecutor: LLM orchestration failed: {ex.Message}");
-                ShowNotification($"❌ LLM error: {ex.Message}");
+                PluginLog.Error($"MCPPromptExecutor: Orchestration failed: {ex.Message}");
+                ShowNotification($"❌ Error: {ex.Message}");
             }
         }
 

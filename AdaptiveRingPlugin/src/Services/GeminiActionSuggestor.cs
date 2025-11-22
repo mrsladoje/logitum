@@ -2,201 +2,105 @@ namespace Loupedeck.AdaptiveRingPlugin.Services;
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics;
+using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Loupedeck.AdaptiveRingPlugin.Models;
 using Loupedeck.AdaptiveRingPlugin.Models.ActionData;
-using Mscc.GenerativeAI;
 
 public class GeminiActionSuggestor
 {
-    private readonly string? _apiKey;
-    private readonly GenerativeModel? _model;
+    private readonly string _scriptPath;
+    private readonly string _pythonPath = "python"; // Assume python is in PATH
 
     public GeminiActionSuggestor()
     {
-        // Load API key from environment variable
-        _apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
-
-        if (string.IsNullOrWhiteSpace(_apiKey))
+        try
         {
-            PluginLog.Warning("GEMINI_API_KEY environment variable not set. Will use fallback actions.");
-            // Uncomment to disable fallback and force no-op if key is missing
-            // _model = null;
-            // For now, we continue without a model which will trigger fallback logic in SuggestActionsAsync
-            _model = null;
+            _scriptPath = IntelligenceServiceLocator.GetScriptPath();
+            PluginLog.Info($"GeminiActionSuggestor using script at: {_scriptPath}");
         }
-        else
+        catch (Exception ex)
         {
-            try
-            {
-                var googleAI = new GoogleAI(_apiKey);
-                _model = googleAI.GenerativeModel(model: "gemini-2.5-flash");
-                PluginLog.Info("Gemini API initialized successfully with model: gemini-2.5-flash");
-            }
-            catch (Exception ex)
-            {
-                PluginLog.Error($"Failed to initialize Gemini API: {ex.Message}");
-                _model = null;
-            }
+            _scriptPath = string.Empty;
+            PluginLog.Error($"GeminiActionSuggestor: Failed to prepare IntelligenceService.py: {ex.Message}");
         }
     }
 
     public async Task<List<AppAction>> SuggestActionsAsync(string appName, List<MCPServerData>? mcpServers, bool mcpAvailable = true)
     {
-        // If API key is missing or model failed to initialize, return fallback
-        if (_model == null)
-        {
-            PluginLog.Info($"Using universal default actions for {appName}");
-            return GetUniversalDefaultActions(appName);
-        }
-
         try
         {
-            PluginLog.Info($"Requesting Gemini AI suggestions for {appName}...");
+            PluginLog.Info($"Requesting AI suggestions for {appName} via Python service...");
 
-            // Build the prompt
-            var prompt = BuildPrompt(appName, mcpServers, mcpAvailable);
-            PluginLog.Verbose($"Prompt: {prompt}");
-
-            // Call Gemini API
-            var response = await _model.GenerateContent(prompt);
-            var responseText = response.Text ?? string.Empty;
-
-            PluginLog.Info($"Gemini response received: {responseText.Length} characters");
-            PluginLog.Verbose($"Full response: {responseText}");
-
-            // Parse the response
-            var actions = ParseGeminiResponse(appName, responseText);
-
-            if (actions.Count == 8)
+            if (string.IsNullOrEmpty(_scriptPath) || !File.Exists(_scriptPath))
             {
-                PluginLog.Info($"Successfully generated {actions.Count} actions for {appName}");
-                return actions;
-            }
-            else
-            {
-                PluginLog.Warning($"Gemini returned {actions.Count} actions instead of 8. Using universal defaults.");
+                PluginLog.Error($"IntelligenceService script missing at {_scriptPath}. Using defaults.");
                 return GetUniversalDefaultActions(appName);
             }
+
+            var mcpServersJson = "[]";
+            if (mcpServers != null && mcpServers.Count > 0)
+            {
+                mcpServersJson = JsonSerializer.Serialize(mcpServers);
+            }
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = _pythonPath,
+                Arguments = $"\"{_scriptPath}\" --app \"{appName}\" --mcp-servers \"{mcpServersJson.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                WorkingDirectory = Path.GetDirectoryName(_scriptPath) // Set working dir to script location
+            };
+            
+            using var process = new Process { StartInfo = startInfo };
+            process.Start();
+
+            var outputTask = process.StandardOutput.ReadToEndAsync();
+            var errorTask = process.StandardError.ReadToEndAsync();
+
+            await Task.WhenAll(outputTask, errorTask);
+            process.WaitForExit();
+
+            var output = outputTask.Result;
+            var error = errorTask.Result;
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                // Log stderr as info/warning since the script uses it for logging
+                PluginLog.Info($"[Python Service] {error.Trim()}");
+            }
+
+            if (process.ExitCode != 0)
+            {
+                PluginLog.Error($"Python service exited with code {process.ExitCode}");
+                return GetUniversalDefaultActions(appName);
+            }
+
+            return ParsePythonResponse(appName, output);
         }
         catch (Exception ex)
         {
-            PluginLog.Error($"Error calling Gemini API: {ex.Message}");
-            PluginLog.Info($"Using universal default actions for {appName}");
+            PluginLog.Error($"Error executing Intelligence Service: {ex.Message}");
             return GetUniversalDefaultActions(appName);
         }
     }
 
-    private string BuildPrompt(string appName, List<MCPServerData>? mcpServers, bool mcpAvailable)
-    {
-        var prompt = $@"You are an expert at creating productivity workflows for {appName}.
-
-Generate exactly 8 actions for the Actions Ring (positions 0-7).
-
-Priority order for action types:
-1. Keybind (fastest execution) - Use for common shortcuts
-2. Prompt (when MCP tools are available) - Use for AI-assisted tasks
-3. Python (for complex automation) - Use for advanced scripting
-
-Action type mixing guidelines:
-- Aim for 60% Keybind, 30% Prompt (if MCP available), 10% Python
-- If no MCP tools are available, use 100% Keybind actions
-
-";
-
-        // Add MCP tools information if available
-        if (mcpAvailable && mcpServers != null && mcpServers.Count > 0)
-        {
-            prompt += "Available MCP tools:\n";
-            foreach (var server in mcpServers)
-            {
-                prompt += $"  - Server: {server.ServerName} ({server.PackageName})\n";
-                if (server.Tools != null && server.Tools.Count > 0)
-                {
-                    foreach (var tool in server.Tools.Take(10))
-                    {
-                        prompt += $"    * {tool.Key}: {tool.Value.Description}\n";
-                    }
-                }
-            }
-            prompt += "\n";
-        }
-        else if (!mcpAvailable)
-        {
-            prompt += "Note: No MCP tools are available for this app. Use only Keybind actions.\n\n";
-        }
-
-        prompt += @"Return ONLY a valid JSON array with exactly 8 objects in this exact format:
-[
-  {
-    ""position"": 0,
-    ""type"": ""Keybind"",
-    ""actionName"": ""Copy"",
-    ""actionData"": {
-      ""keys"": [""Ctrl"", ""C""],
-      ""description"": ""Copy selected text""
-    }
-  },
-  {
-    ""position"": 1,
-    ""type"": ""Prompt"",
-    ""actionName"": ""Analyze Code"",
-    ""actionData"": {
-      ""mcpServerName"": ""vscode"",
-      ""toolName"": ""analyze"",
-      ""parameters"": {},
-      ""description"": ""Analyze selected code""
-    }
-  },
-  {
-    ""position"": 2,
-    ""type"": ""Python"",
-    ""actionName"": ""Custom Script"",
-    ""actionData"": {
-      ""scriptCode"": ""print('Hello')"",
-      ""arguments"": [],
-      ""description"": ""Run custom script""
-    }
-  }
-]
-
-Important rules:
-- Return ONLY the JSON array, no markdown formatting, no code blocks, no explanations
-- Each action must have position (0-7), type (Keybind/Prompt/Python), actionName, and actionData
-- For Keybind: actionData must have ""keys"" array and optional ""description""
-- For Prompt: actionData must have ""mcpServerName"", ""toolName"", optional ""parameters"" dict, and optional ""description""
-- For Python: actionData must have ""scriptCode"" or ""scriptPath"", optional ""arguments"" array, and optional ""description""
-- Make actions relevant and useful for {appName}
-- Prioritize common workflows and frequent tasks
-
-Generate 8 optimal actions now:";
-
-        return prompt;
-    }
-
-    private List<AppAction> ParseGeminiResponse(string appName, string responseText)
+    private List<AppAction> ParsePythonResponse(string appName, string responseText)
     {
         try
         {
-            // Clean up the response text (remove markdown code blocks if present)
             var cleanedText = responseText.Trim();
-            if (cleanedText.StartsWith("```json"))
+            if (string.IsNullOrEmpty(cleanedText))
             {
-                cleanedText = cleanedText.Substring(7);
+                PluginLog.Warning("Empty response from Python service");
+                return GetUniversalDefaultActions(appName);
             }
-            else if (cleanedText.StartsWith("```"))
-            {
-                cleanedText = cleanedText.Substring(3);
-            }
-            if (cleanedText.EndsWith("```"))
-            {
-                cleanedText = cleanedText.Substring(0, cleanedText.Length - 3);
-            }
-            cleanedText = cleanedText.Trim();
 
-            // Parse the JSON response
             var jsonOptions = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true,
@@ -207,7 +111,7 @@ Generate 8 optimal actions now:";
 
             if (geminiActions == null || geminiActions.Count != 8)
             {
-                PluginLog.Warning($"Invalid Gemini response: Expected 8 actions, got {geminiActions?.Count ?? 0}");
+                PluginLog.Warning($"Invalid response: Expected 8 actions, got {geminiActions?.Count ?? 0}");
                 return GetUniversalDefaultActions(appName);
             }
 
@@ -233,7 +137,8 @@ Generate 8 optimal actions now:";
         }
         catch (Exception ex)
         {
-            PluginLog.Error($"Error parsing Gemini response: {ex.Message}");
+            PluginLog.Error($"Error parsing Python response: {ex.Message}");
+            PluginLog.Verbose($"Raw response: {responseText}");
             return GetUniversalDefaultActions(appName);
         }
     }
@@ -337,11 +242,9 @@ Generate 8 optimal actions now:";
             actions.Add(action);
         }
 
-        PluginLog.Info($"Generated {actions.Count} universal default actions for {appName}");
         return actions;
     }
 
-    // Helper classes for JSON parsing
     private class GeminiActionResponse
     {
         public int Position { get; set; }
@@ -352,20 +255,13 @@ Generate 8 optimal actions now:";
 
     private class GeminiActionData
     {
-        // Keybind fields
         public List<string>? Keys { get; set; }
-
-        // Prompt fields
         public string? McpServerName { get; set; }
         public string? ToolName { get; set; }
         public Dictionary<string, object>? Parameters { get; set; }
-
-        // Python fields
         public string? ScriptCode { get; set; }
         public string? ScriptPath { get; set; }
         public List<string>? Arguments { get; set; }
-
-        // Common field
         public string? Description { get; set; }
     }
 }
