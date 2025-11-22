@@ -1,6 +1,7 @@
 namespace Loupedeck.AdaptiveRingPlugin
 {
     using System;
+    using System.IO;
     using Loupedeck.AdaptiveRingPlugin.Services;
 
     // This class contains the plugin-level logic of the Loupedeck plugin.
@@ -8,6 +9,8 @@ namespace Loupedeck.AdaptiveRingPlugin
     public class AdaptiveRingPlugin : Plugin
     {
         private ProcessMonitor _processMonitor;
+        private AppDatabase _database;
+        private MCPRegistryClient _mcpClient;
 
         // Gets a value indicating whether this is an API-only plugin.
         public override Boolean UsesApplicationApiOnly => true;
@@ -32,6 +35,31 @@ namespace Loupedeck.AdaptiveRingPlugin
             PluginLog.Info("🎯 AdaptiveRing Plugin Loading...");
             PluginLog.Info("============================================");
 
+            // Initialize database
+            var dbPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Logitum",
+                "adaptive_ring.db"
+            );
+
+            // Ensure directory exists
+            var dbDir = Path.GetDirectoryName(dbPath);
+            if (!Directory.Exists(dbDir))
+            {
+                Directory.CreateDirectory(dbDir);
+            }
+
+            PluginLog.Info($"Database path: {dbPath}");
+            _database = new AppDatabase(dbPath);
+            PluginLog.Info("✅ Database initialized");
+
+            // Initialize MCP Registry Client
+            _mcpClient = new MCPRegistryClient(_database);
+            PluginLog.Info("✅ MCP Registry Client initialized");
+
+            // Download ToolSDK index asynchronously (don't block plugin loading)
+            _ = InitializeToolSDKIndexAsync();
+
             // Initialize the process monitor
             _processMonitor = new ProcessMonitor();
             _processMonitor.AppSwitched += OnAppSwitched;
@@ -55,19 +83,68 @@ namespace Loupedeck.AdaptiveRingPlugin
                 _processMonitor = null;
             }
 
+            // Dispose database
+            if (_database != null)
+            {
+                _database.Dispose();
+                _database = null;
+            }
+
             PluginLog.Info("👋 AdaptiveRing Plugin unloaded");
         }
 
-        private void OnAppSwitched(object sender, AppSwitchedEventArgs e)
+        private async System.Threading.Tasks.Task InitializeToolSDKIndexAsync()
+        {
+            try
+            {
+                await _mcpClient.InitializeToolSDKIndexAsync();
+            }
+            catch (Exception ex)
+            {
+                PluginLog.Error($"Failed to initialize ToolSDK index: {ex.Message}");
+            }
+        }
+
+        private async void OnAppSwitched(object sender, AppSwitchedEventArgs e)
         {
             PluginLog.Info($"📱 App Switch Detected: {e.ProcessName}");
             PluginLog.Info($"   Window: {e.WindowTitle}");
             PluginLog.Info($"   PID: {e.ProcessId}");
 
-            // TODO: In next phase, this will:
-            // 1. Query MCP Registry for this app
-            // 2. Get AI-suggested actions
-            // 3. Update the Actions Ring
+            try
+            {
+                // Query MCP registries for this app
+                var mcpServer = await _mcpClient.FindServerAsync(e.ProcessName);
+
+                if (mcpServer != null)
+                {
+                    PluginLog.Info($"✅ MCP Server Found!");
+                    PluginLog.Info($"   Name: {mcpServer.ServerName}");
+                    PluginLog.Info($"   Package: {mcpServer.PackageName}");
+                    PluginLog.Info($"   Registry: {mcpServer.RegistrySource}");
+                    PluginLog.Info($"   Category: {mcpServer.Category}");
+                    PluginLog.Info($"   Validated: {mcpServer.Validated}");
+
+                    if (mcpServer.Tools != null && mcpServer.Tools.Count > 0)
+                    {
+                        PluginLog.Info($"   Tools: {mcpServer.Tools.Count} available");
+                        foreach (var tool in mcpServer.Tools.Take(5))
+                        {
+                            PluginLog.Info($"     - {tool.Key}: {tool.Value.Description}");
+                        }
+                    }
+
+                    // TODO: Update Actions Ring with MCP tools
+                }
+                else
+                {
+                    PluginLog.Info($"❌ No MCP server found for {e.ProcessName}");
+                }
+            }
+            catch (Exception ex)
+            {
+                PluginLog.Error($"Error querying MCP registries: {ex.Message}");
+            }
         }
     }
 }
