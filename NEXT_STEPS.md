@@ -1,421 +1,512 @@
-# Next Steps: Milestone 2 - Process Monitor
+# Next Steps: Milestone 4 - AI Workflow Suggestions
 
-**Current Status**: ✅ Milestone 1 Complete - Plugin Structure Ready
-**Next Goal**: Detect active window/application switches in real-time
-**Branch**: `feature/process-monitor` (to be created)
+**Current Status**: ✅ Milestone 3 Complete - MCP Registry Integration Working
+**Next Goal**: Use Claude API to generate context-aware workflow suggestions based on discovered MCP servers
+**Branch**: `feat/process-monitoring` (current)
 
 ---
 
 ## What We're Building
 
-A **Process Monitor** component that:
-1. Detects which application window is currently active
-2. Tracks when the user switches between applications
-3. Logs application names and process information
-4. Fires events when context changes (for future MCP integration)
+An **AI Action Suggester** that:
+1. Takes MCP server metadata (name, description, version)
+2. Sends to Claude API with context about the active application
+3. Receives 6-8 suggested common workflows/actions
+4. Parses and logs suggestions (Actions Ring update in Milestone 5)
+5. Caches suggestions per app to reduce API costs
+
+**Key Insight**: Since MCP Registry doesn't return tool lists, Claude will infer likely workflows from server descriptions (e.g., "GitHub repository management" → suggests "Create PR", "Commit", "Push")
 
 ---
 
 ## Implementation Plan
 
-### Phase 1: Core Process Detection (2-3 hours)
+### Phase 1: Claude API Client (1-2 hours)
 
 **Files to Create**:
 ```
 src/LogitumAdaptiveRing/
-├── Services/
-│   ├── ProcessMonitor.cs         - Main process monitoring service
-│   ├── IProcessMonitor.cs         - Interface for dependency injection
-│   └── ProcessInfo.cs             - Data model for process information
-└── Helpers/
-    └── Win32Api.cs                - P/Invoke declarations for Windows APIs
+└── Services/
+    ├── IClaudeClient.cs           - Interface for Claude API
+    ├── ClaudeClient.cs            - Anthropic API HTTP client
+    └── WorkflowSuggestion.cs      - Data model for AI suggestions
 ```
 
-**Key APIs to Use**:
-- `GetForegroundWindow()` - Get active window handle
-- `GetWindowThreadProcessId()` - Get process ID from window
-- `Process.GetProcessById()` - Get process details
-- `Timer` or `BackgroundWorker` - Poll for changes every 500ms
+**API Configuration**:
+- **Endpoint**: `https://api.anthropic.com/v1/messages`
+- **Model**: `claude-sonnet-4-20250514` (latest Sonnet)
+- **API Key**: Required (set as environment variable or config)
+- **Max Tokens**: 500 (suggestions are short)
+- **System Prompt**: "You are a workflow assistant. Given an MCP server description, suggest 6-8 common user actions."
 
 **Success Criteria**:
-- ✅ Detects current active application
-- ✅ Fires event when application switches
-- ✅ Logs process name, window title, executable path
-- ✅ No performance impact (<1% CPU usage)
+- [ ] Can authenticate with Anthropic API
+- [ ] Sends server metadata in structured prompt
+- [ ] Receives JSON array of workflow suggestions
+- [ ] Handles API errors (rate limits, network failures)
+- [ ] Timeout: 10 seconds
 
 ---
 
-### Phase 2: Integration with Plugin (1 hour)
+### Phase 2: Prompt Engineering (1 hour)
+
+**Prompt Template**:
+```
+You are analyzing an MCP server for workflow suggestions.
+
+Application: {processName}
+MCP Server: {serverName} v{version}
+Description: {serverDescription}
+
+Task: Suggest 6-8 common workflows a user might want to perform with this server.
+
+Requirements:
+- Each suggestion should be a short action phrase (2-4 words)
+- Focus on high-frequency, practical tasks
+- Order by likelihood of use (most common first)
+
+Return ONLY a JSON array of strings:
+["Action 1", "Action 2", "Action 3", ...]
+
+Example for "github - Repository management":
+["Create Pull Request", "Commit Changes", "Push to Remote", "Search Code", "Create Issue", "View Branches"]
+```
+
+**Edge Cases**:
+- **No servers found**: Return generic suggestions (Screenshot, Search, Copy Text, Open Settings)
+- **Multiple servers**: Combine top 3-4 actions from each
+- **Unknown/niche servers**: Ask Claude to infer from description
+
+**Success Criteria**:
+- [ ] Prompt generates relevant suggestions for known servers
+- [ ] Suggestions are actionable and user-friendly
+- [ ] Handles edge cases gracefully
+- [ ] JSON parsing succeeds >95% of the time
+
+---
+
+### Phase 3: Suggestion Caching (1 hour)
+
+**Database Changes**:
+```sql
+-- Add new table to cache AI-generated suggestions
+CREATE TABLE workflow_suggestions (
+    app_name TEXT,
+    server_name TEXT,
+    suggestion_text TEXT,
+    suggestion_order INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (app_name, server_name, suggestion_order)
+);
+
+CREATE INDEX idx_suggestions_app ON workflow_suggestions(app_name);
+```
+
+**Caching Strategy**:
+- Cache suggestions per app + server combination
+- TTL: 7 days (suggestions don't change often)
+- First query: Call Claude API, cache results
+- Subsequent queries: Return cached suggestions instantly
+- Invalidate cache when server version changes
+
+**AppDatabase Methods to Add**:
+```csharp
+void CacheWorkflowSuggestions(string appName, string serverName, List<string> suggestions)
+List<string> GetCachedSuggestions(string appName, string serverName)
+bool AreSuggestionsCached(string appName, string serverName)
+```
+
+**Success Criteria**:
+- [ ] Suggestions stored in database
+- [ ] Cache lookups are <5ms
+- [ ] Cache invalidation works correctly
+- [ ] Database upgrade is automatic (ALTER TABLE)
+
+---
+
+### Phase 4: Plugin Integration (1-2 hours)
 
 **Files to Modify**:
 ```
 src/LogitumAdaptiveRing/
-├── AdaptiveRingPlugin.cs          - Wire up ProcessMonitor in Load()
-└── Services/ProcessMonitor.cs     - Add event handlers
+└── AdaptiveRingPlugin.cs  - Add AI suggestion logic
 ```
 
-**Implementation**:
-```csharp
-// In AdaptiveRingPlugin.Load()
-_processMonitor = new ProcessMonitor();
-_processMonitor.ApplicationChanged += OnApplicationChanged;
-_processMonitor.Start();
+**Integration Points**:
 
-private void OnApplicationChanged(object sender, ProcessInfo info)
-{
-    this.Log.Info($"Active app changed: {info.ProcessName}");
-    // TODO: Phase 3 - Query MCP Registry for this app
-}
-```
+1. **Constructor**: Initialize ClaudeClient
+   ```csharp
+   private ClaudeClient _claudeClient;
+
+   public AdaptiveRingPlugin()
+   {
+       // Existing code...
+       this._claudeClient = new ClaudeClient(apiKey: GetClaudeApiKey());
+       this.Log.Info($"{LogTag} Claude API client initialized");
+   }
+   ```
+
+2. **OnApplicationChanged**: Request suggestions after MCP query
+   ```csharp
+   private async void OnApplicationChanged(object sender, ProcessInfo info)
+   {
+       var servers = await this.QueryMCPServersForAppAsync(info.ProcessName);
+
+       if (servers.Count > 0)
+       {
+           // NEW: Get AI suggestions
+           var suggestions = await this.GetWorkflowSuggestionsAsync(info.ProcessName, servers);
+
+           this.Log.Info($"{LogTag} AI suggested {suggestions.Count} workflows:");
+           foreach (var suggestion in suggestions)
+           {
+               this.Log.Info($"{LogTag}   - {suggestion}");
+           }
+       }
+   }
+   ```
+
+3. **New Method**: GetWorkflowSuggestionsAsync
+   ```csharp
+   private async Task<List<string>> GetWorkflowSuggestionsAsync(string appName, List<MCPServer> servers)
+   {
+       // Check cache first
+       if (_database.AreSuggestionsCached(appName, servers[0].Name))
+       {
+           return _database.GetCachedSuggestions(appName, servers[0].Name);
+       }
+
+       // Query Claude API
+       var suggestions = await _claudeClient.GetWorkflowSuggestionsAsync(appName, servers[0]);
+
+       // Cache results
+       _database.CacheWorkflowSuggestions(appName, servers[0].Name, suggestions);
+
+       return suggestions;
+   }
+   ```
+
+**Configuration**:
+- API key from environment variable: `ANTHROPIC_API_KEY`
+- Fallback: Hardcoded key in PluginManifest.json (for testing)
+- Error handling: Log failure, return empty list
 
 **Success Criteria**:
-- ✅ Plugin starts monitoring on load
-- ✅ Plugin stops monitoring on unload
-- ✅ Logs appear in plugin debug output
+- [ ] Plugin queries Claude after finding MCP servers
+- [ ] Suggestions appear in logs
+- [ ] Cache works (second query is instant)
+- [ ] Handles API failures gracefully
+- [ ] No crashes if API key is missing
 
 ---
 
-### Phase 3: Testing Console App (1 hour)
+### Phase 5: Test Console Enhancement (30 min)
 
-**Files to Create**:
+**Files to Modify**:
 ```
 src/LogitumAdaptiveRing.TestConsole/
-├── LogitumAdaptiveRing.TestConsole.csproj
-└── Program.cs                     - Standalone test harness
+└── Program.cs  - Add --test-ai mode
 ```
 
-**Purpose**:
-- Test ProcessMonitor WITHOUT Logitech Options+ installed
-- Verify detection works before plugin integration
-- Debug and troubleshoot issues faster
-
-**Test Console Features**:
+**New Test Mode**:
+```bash
+dotnet run --test-ai
 ```
-[04:15:32] Active App: Visual Studio Code
-           Process: Code.exe
-           Path: C:\Users\...\Code.exe
-           Window: logitum - Visual Studio Code
 
-[04:15:45] 🔄 App Switch Detected!
-           From: Visual Studio Code
-           To:   Google Chrome
+**What It Tests**:
+1. Queries MCP Registry for "github"
+2. Sends to Claude API for suggestions
+3. Displays results:
+   ```
+   🔍 Testing AI Suggestions for 'github'...
+   📦 Found server: github v1.0.0
+   🤖 Claude API suggests:
+      1. Create Pull Request
+      2. Commit Changes
+      3. Push to Remote
+      4. Search Code
+      5. Create Issue
+      6. View Branches
 
-[04:15:48] Active App: Google Chrome
-           Process: chrome.exe
-           Path: C:\Program Files\Google\Chrome\Application\chrome.exe
-           Window: GitHub - mrsladoje/logitum
-```
+   ✅ AI test complete!
+   ```
 
 **Success Criteria**:
-- ✅ Console app runs standalone
-- ✅ Real-time detection of app switches
-- ✅ Clean, readable output
-- ✅ Ctrl+C to exit gracefully
+- [ ] Test mode queries API successfully
+- [ ] Displays formatted suggestions
+- [ ] Shows API response time
+- [ ] Handles no-server edge case
 
 ---
 
-## Technical Implementation Details
+## API Cost Estimation
 
-### Windows API Approach
+**Per Query**:
+- Input tokens: ~150 (prompt + metadata)
+- Output tokens: ~100 (6-8 suggestions)
+- Cost: ~$0.001 per query (Sonnet 4)
 
-```csharp
-// Win32Api.cs - P/Invoke declarations
-[DllImport("user32.dll")]
-public static extern IntPtr GetForegroundWindow();
+**With Caching** (7-day TTL):
+- First week: ~$0.10 (100 unique app queries)
+- Ongoing: ~$0.01/week (cache hits)
 
-[DllImport("user32.dll")]
-public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
-
-[DllImport("user32.dll")]
-public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
-```
-
-### ProcessMonitor.cs - Core Logic
-
-```csharp
-public class ProcessMonitor : IDisposable
-{
-    private Timer _timer;
-    private ProcessInfo _lastActiveProcess;
-
-    public event EventHandler<ProcessInfo> ApplicationChanged;
-
-    public void Start()
-    {
-        _timer = new Timer(CheckActiveWindow, null, 0, 500); // Poll every 500ms
-    }
-
-    private void CheckActiveWindow(object state)
-    {
-        var hwnd = Win32Api.GetForegroundWindow();
-        Win32Api.GetWindowThreadProcessId(hwnd, out uint processId);
-
-        var process = Process.GetProcessById((int)processId);
-        var currentProcess = new ProcessInfo
-        {
-            ProcessId = processId,
-            ProcessName = process.ProcessName,
-            ExecutablePath = process.MainModule?.FileName,
-            WindowTitle = GetWindowTitle(hwnd)
-        };
-
-        if (_lastActiveProcess?.ProcessName != currentProcess.ProcessName)
-        {
-            ApplicationChanged?.Invoke(this, currentProcess);
-            _lastActiveProcess = currentProcess;
-        }
-    }
-}
-```
-
-### ProcessInfo.cs - Data Model
-
-```csharp
-public class ProcessInfo
-{
-    public uint ProcessId { get; set; }
-    public string ProcessName { get; set; }
-    public string ExecutablePath { get; set; }
-    public string WindowTitle { get; set; }
-    public DateTime DetectedAt { get; set; } = DateTime.UtcNow;
-}
-```
+**Total Milestone 4 Budget**: <$1 for testing
 
 ---
 
 ## Testing Instructions
 
-### Option A: Test Console App (Recommended First)
+### Option A: Test AI Client Standalone
 
-**Purpose**: Verify process monitoring works before plugin integration
+```bash
+cd src/LogitumAdaptiveRing.TestConsole
+dotnet run --test-ai
+```
 
-**Steps**:
-
-1. **Build the test console**:
-   ```bash
-   cd src/LogitumAdaptiveRing.TestConsole
-   dotnet build
-   dotnet run
-   ```
-
-2. **Expected output**:
-   ```
-   🔍 MCP Adaptive Ring - Process Monitor Test
-   ============================================
-   Monitoring active window... Press Ctrl+C to exit
-
-   [04:20:15] Visual Studio Code (Code.exe)
-   [04:20:23] 🔄 Switch → Google Chrome (chrome.exe)
-   [04:20:31] 🔄 Switch → Slack (slack.exe)
-   [04:20:45] 🔄 Switch → Visual Studio Code (Code.exe)
-   ```
-
-3. **What to test**:
-   - ✅ Switch between different apps → See detection events
-   - ✅ Switch to same app → No duplicate events
-   - ✅ CPU usage stays low (<1%)
-   - ✅ Press Ctrl+C → Exits cleanly
-
-4. **Success criteria**:
-   - Detects all app switches within 500ms
-   - No crashes or exceptions
-   - Clean shutdown
+**What to test**:
+- [ ] API authentication works
+- [ ] Suggestions are relevant
+- [ ] JSON parsing succeeds
+- [ ] Network errors handled
+- [ ] Response time <10s
 
 ---
 
-### Option B: Test in Plugin (After Console Works)
+### Option B: Test with Logitech Options+
 
-**Purpose**: Verify integration with Logitech plugin
+**Setup**:
+```bash
+# Set API key
+setx ANTHROPIC_API_KEY "sk-ant-your-key-here"
 
-**Prerequisites**:
-- ✅ Logitech Options+ installed
-- ✅ MX device connected
-- ✅ Plugin builds successfully
+# Rebuild plugin
+dotnet build
+```
 
-**Steps**:
+**Test Flow**:
+1. Open Options+
+2. Switch to GitHub Desktop
+3. Check logs: Should see MCP query + AI suggestions
+4. Switch to VS Code
+5. Check logs: Should see cached suggestions (instant)
 
-1. **Build the plugin**:
-   ```bash
-   cd src/LogitumAdaptiveRing
-   dotnet build
-   ```
-
-2. **Check plugin loaded**:
-   - Open Logitech Options+
-   - Go to **Settings** → **Plugins**
-   - Look for "MCP Adaptive Ring"
-   - Should show as **Enabled** with green status
-
-3. **View plugin logs**:
-
-   **Windows Event Viewer**:
-   ```
-   1. Open Event Viewer (eventvwr.msc)
-   2. Navigate: Applications and Services Logs → Logi
-   3. Look for "MCP-AdaptiveRing" entries
-   ```
-
-   **OR use DebugView** (recommended):
-   ```
-   1. Download DebugView from Microsoft Sysinternals
-   2. Run as Administrator
-   3. Enable: Capture → Capture Win32
-   4. Filter for "[MCP-AdaptiveRing]"
-   ```
-
-4. **Expected log output**:
-   ```
-   [MCP-AdaptiveRing] Plugin constructor called
-   [MCP-AdaptiveRing] Plugin loading...
-   [MCP-AdaptiveRing] Starting process monitor...
-   [MCP-AdaptiveRing] Plugin loaded successfully ✅
-   [MCP-AdaptiveRing] Active app changed: Code
-   [MCP-AdaptiveRing] Active app changed: chrome
-   [MCP-AdaptiveRing] Active app changed: Slack
-   ```
-
-5. **What to test**:
-   - ✅ Plugin loads without errors
-   - ✅ Process monitor starts automatically
-   - ✅ Logs show app switches in real-time
-   - ✅ Plugin unloads cleanly (restart Options+)
-
-6. **Success criteria**:
-   - No errors in logs
-   - All app switches detected
-   - Plugin doesn't crash Options+
+**Expected Log Output**:
+```
+[MCP-AdaptiveRing] Active app changed: GitHub
+[MCP-AdaptiveRing] Found 1 MCP server(s) for GitHub:
+[MCP-AdaptiveRing]   - github v1.0.0: GitHub repository management
+[MCP-AdaptiveRing] Querying Claude API for workflow suggestions...
+[MCP-AdaptiveRing] AI suggested 6 workflows:
+[MCP-AdaptiveRing]   - Create Pull Request
+[MCP-AdaptiveRing]   - Commit Changes
+[MCP-AdaptiveRing]   - Push to Remote
+[MCP-AdaptiveRing]   - Search Code
+[MCP-AdaptiveRing]   - Create Issue
+[MCP-AdaptiveRing]   - View Branches
+```
 
 ---
 
-### Option C: Test Without Options+ (Development Mode)
+### Option C: Database Inspection
 
-**Purpose**: Test plugin code using stub classes (no Logitech software required)
+```bash
+sqlite3 %LOCALAPPDATA%/Logitum/adaptivering.db
 
-**Steps**:
+# Check cached suggestions
+SELECT * FROM workflow_suggestions;
 
-1. **Run plugin as console app** (temporary wrapper):
-   ```bash
-   # Create a quick Program.cs that instantiates the plugin
-   dotnet run --project src/LogitumAdaptiveRing
-   ```
-
-2. **Modify AdaptiveRingPlugin.cs** temporarily:
-   ```csharp
-   // Add Main method for standalone testing
-   #if DEBUG
-   public static void Main(string[] args)
-   {
-       var plugin = new AdaptiveRingPlugin();
-       plugin.Load();
-       Console.WriteLine("Press any key to stop...");
-       Console.ReadKey();
-       plugin.Unload();
-   }
-   #endif
-   ```
-
-3. **Expected output**:
-   ```
-   [INFO] [MCP-AdaptiveRing] Plugin constructor called
-   [INFO] [MCP-AdaptiveRing] Plugin loading...
-   [INFO] [MCP-AdaptiveRing] Starting process monitor...
-   [INFO] [MCP-AdaptiveRing] Active app changed: Code
-   [INFO] [MCP-AdaptiveRing] Active app changed: chrome
-   Press any key to stop...
-   ```
-
-4. **Success criteria**:
-   - Runs without PluginApi.dll
-   - Uses stub logger correctly
-   - Process monitoring works
+# Check app-to-suggestion mapping
+SELECT app_name, server_name, suggestion_text, suggestion_order
+FROM workflow_suggestions
+ORDER BY app_name, suggestion_order;
+```
 
 ---
 
-## Debugging Tips
+## Performance Targets
 
-### Issue: "GetForegroundWindow returns null"
-**Cause**: Running without UI session or as service
-**Fix**: Ensure console app runs in interactive user session
+**API Response Time**:
+- First query (no cache): <10s (includes API latency)
+- Cached query: <5ms (database lookup)
+- Timeout threshold: 10s
 
-### Issue: "Access Denied getting process details"
-**Cause**: Some processes require elevated privileges
-**Fix**: Add try-catch and skip privileged processes gracefully
+**Database Performance**:
+- Cache lookup: <5ms
+- Cache insert: <10ms
+- Database size after 100 apps: ~1.5MB (including suggestions)
 
-### Issue: "High CPU usage"
-**Cause**: Polling too frequently
-**Fix**: Increase timer interval from 500ms to 1000ms
-
-### Issue: "No events firing"
-**Cause**: Process name comparison case-sensitive
-**Fix**: Use `StringComparer.OrdinalIgnoreCase`
+**Memory Usage**:
+- Claude API client: ~5MB
+- Additional overhead: ~2MB
 
 ---
 
-## Performance Benchmarks
+## Error Handling Strategy
 
-**Target**:
-- CPU usage: <1% average
-- Memory: <20MB
-- Polling interval: 500ms (acceptable latency)
-- Event detection: <500ms after switch
+**API Errors**:
+```csharp
+public async Task<List<string>> GetWorkflowSuggestionsAsync(string appName, MCPServer server)
+{
+    try
+    {
+        var response = await _httpClient.PostAsync(endpoint, content);
 
-**Acceptable**:
-- CPU usage: <2% average
-- Memory: <50MB
-- Polling interval: 1000ms
-- Event detection: <1s after switch
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.Warning($"Claude API returned {response.StatusCode}");
+            return GetFallbackSuggestions();
+        }
+
+        return ParseSuggestions(response);
+    }
+    catch (HttpRequestException ex)
+    {
+        _logger.Warning($"Network error: {ex.Message}");
+        return GetFallbackSuggestions();
+    }
+    catch (JsonException ex)
+    {
+        _logger.Error($"JSON parse error: {ex.Message}");
+        return GetFallbackSuggestions();
+    }
+}
+
+private List<string> GetFallbackSuggestions()
+{
+    // Generic suggestions when AI fails
+    return new List<string>
+    {
+        "Screenshot Window",
+        "Copy Text",
+        "Search Google",
+        "Open Settings"
+    };
+}
+```
+
+**Graceful Degradation**:
+- API down → Use fallback suggestions
+- No API key → Use fallback suggestions
+- Timeout → Use cached suggestions (even if stale)
+- Never crash the plugin
 
 ---
 
 ## Code Quality Checklist
 
-Before committing:
-- [ ] All methods have XML documentation comments
-- [ ] Proper exception handling with logging
-- [ ] IDisposable implemented correctly
-- [ ] No memory leaks (dispose timer)
-- [ ] Event handlers unsubscribed in Unload()
-- [ ] Unit tests added (optional for hackathon)
+Before committing Milestone 4:
+- [ ] All methods have XML documentation
+- [ ] Async/await used correctly (no blocking)
+- [ ] HTTP client disposed properly
+- [ ] Database transactions for suggestion inserts
+- [ ] JSON serialization handles missing fields
+- [ ] API key never logged or exposed
+- [ ] All errors handled gracefully
+- [ ] Unit tests for prompt generation (optional)
+- [ ] Integration test with real API
 
 ---
 
 ## File Checklist
 
 **To Create**:
-- [ ] `src/LogitumAdaptiveRing/Services/IProcessMonitor.cs`
-- [ ] `src/LogitumAdaptiveRing/Services/ProcessMonitor.cs`
-- [ ] `src/LogitumAdaptiveRing/Services/ProcessInfo.cs`
-- [ ] `src/LogitumAdaptiveRing/Helpers/Win32Api.cs`
-- [ ] `src/LogitumAdaptiveRing.TestConsole/Program.cs`
-- [ ] `src/LogitumAdaptiveRing.TestConsole/LogitumAdaptiveRing.TestConsole.csproj`
+- [ ] `src/LogitumAdaptiveRing/Services/IClaudeClient.cs`
+- [ ] `src/LogitumAdaptiveRing/Services/ClaudeClient.cs`
+- [ ] `src/LogitumAdaptiveRing/Services/WorkflowSuggestion.cs`
 
 **To Modify**:
-- [ ] `src/LogitumAdaptiveRing/AdaptiveRingPlugin.cs` - Add ProcessMonitor integration
-- [ ] `LogitumAdaptiveRing.sln` - Add TestConsole project
-- [ ] `CLAUDE.md` - Update with Milestone 2 completion
+- [ ] `src/LogitumAdaptiveRing/AdaptiveRingPlugin.cs` - Add Claude integration
+- [ ] `src/LogitumAdaptiveRing/Data/AppDatabase.cs` - Add suggestion caching methods
+- [ ] `src/LogitumAdaptiveRing/Data/DatabaseSchema.sql` - Add workflow_suggestions table
+- [ ] `src/LogitumAdaptiveRing.TestConsole/Program.cs` - Add --test-ai mode
+
+**NuGet Packages to Add**:
+None (System.Net.Http and System.Text.Json already available)
 
 ---
 
 ## Success Metrics
 
-**Milestone 2 is complete when**:
-- ✅ ProcessMonitor class implemented and tested
-- ✅ Test console app detects app switches reliably
-- ✅ Plugin integration works (logs show events)
-- ✅ CPU and memory usage within targets
-- ✅ Code committed to `feature/process-monitor` branch
-- ✅ CLAUDE.md updated with test results
+**Milestone 4 is complete when**:
+- [ ] ClaudeClient can authenticate and query API
+- [ ] Suggestions are parsed from JSON response
+- [ ] Database caches suggestions (7-day TTL)
+- [ ] Plugin queries Claude after finding MCP servers
+- [ ] Logs show AI-suggested workflows
+- [ ] Handles errors gracefully (no crashes)
+- [ ] Test console can test AI suggestions standalone
+- [ ] Build succeeds with 0 errors
+
+---
+
+## Common MCP Servers to Test With
+
+**Definitely Work** (verified in Milestone 3):
+1. **github** → Expect: Create PR, Commit, Push, Search, Issues
+2. **slack** → Expect: Send Message, Search, Mention, Create Channel
+3. **postgres** → Expect: Query Database, View Tables, Backup, Execute SQL
+4. **docker** → Expect: Start Container, Stop Container, View Logs, Build Image
+
+**Edge Cases to Test**:
+- **notepad** (no server) → Fallback suggestions
+- **chrome** (multiple servers) → Combined suggestions
+- **unknown-app** → Graceful handling
 
 ---
 
 ## Next Milestone Preview
 
-**Milestone 3: MCP Registry Integration**
-- Query MCP Registry API for available servers
-- Parse server metadata and tools
-- Cache results in SQLite database
-- Display available tools for current app
+**Milestone 5: Actions Ring Population**
+- Map AI suggestions to Actions Ring slots
+- Update ring when app context changes
+- Handle user clicks on ring actions
+- Execute MCP tools via API/CLI
+- Display action feedback to user
 
 ---
 
-**Ready to start?** Let me know and I'll create the `feature/process-monitor` branch and begin implementation! 🚀
+## Architecture Diagram
+
+```
+┌──────────────────────────────────────────┐
+│    Process Monitor (M2) + MCP (M3)       │
+│  Detects: "User switched to GitHub"     │
+│  Query: Found MCP server "github"        │
+└──────────────┬───────────────────────────┘
+               │
+               ↓
+┌──────────────────────────────────────────┐
+│       Claude API Client (M4 - NEW)       │
+│  1. Check cache: Do we have suggestions? │
+│  2. If not: Send to Claude API           │
+│     Prompt: "github - Repository mgmt"   │
+│  3. Parse response → List<string>        │
+│  4. Cache in SQLite for 7 days           │
+└──────────────┬───────────────────────────┘
+               │
+               ↓
+┌──────────────────────────────────────────┐
+│        SQLite Database (M3 + M4)         │
+│  New Table: workflow_suggestions         │
+│  TTL: 7 days                             │
+└──────────────┬───────────────────────────┘
+               │
+               ↓
+┌──────────────────────────────────────────┐
+│         Plugin Logs Output               │
+│  [MCP-AdaptiveRing] AI suggested 6 workflows │
+│    - Create Pull Request                 │
+│    - Commit Changes                      │
+│    - Push to Remote                      │
+│    (... ready for Actions Ring M5)       │
+└──────────────────────────────────────────┘
+```
+
+---
+
+**Ready to start?** Get your Anthropic API key, set the environment variable, and begin implementing the Claude client! 🚀
+
+**Estimated Time**: 4-6 hours for complete Milestone 4 implementation
+**Dependencies**: Milestone 3 must be working (MCP Registry queries)
+**Blocker Risk**: Low (Claude API is stable, we have fallback suggestions)
+**API Cost**: <$1 for testing phase
