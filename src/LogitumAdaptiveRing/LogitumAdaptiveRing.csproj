@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <RootNamespace>Loupedeck.LogitumAdaptiveRing</RootNamespace>
+    <AssemblyName>LogitumAdaptiveRingPlugin</AssemblyName>
 
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
