@@ -10,7 +10,7 @@ namespace Loupedeck.AdaptiveRingPlugin
 
     internal static class PluginResources
     {
-        private static Assembly _assembly;
+        private static Assembly _assembly = null!;
 
         public static void Init(Assembly assembly)
         {

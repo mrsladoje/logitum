@@ -13,7 +13,7 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
         private string _currentProcessName = "";
         private IntPtr _currentWindowHandle = IntPtr.Zero;
 
-        public event EventHandler<AppSwitchedEventArgs> AppSwitched;
+        public event EventHandler<AppSwitchedEventArgs> AppSwitched = null!;
 
         public ProcessMonitor()
         {
@@ -29,7 +29,7 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
             _pollTimer.Start();
 
             // Check immediately on start
-            CheckForegroundProcess(null, null);
+            CheckForegroundProcess(null, null!);
         }
 
         public void Stop()
@@ -38,7 +38,7 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
             _pollTimer.Stop();
         }
 
-        private void CheckForegroundProcess(object sender, ElapsedEventArgs e)
+        private void CheckForegroundProcess(object? sender, ElapsedEventArgs? e)
         {
             try
             {
@@ -102,8 +102,8 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
     /// </summary>
     public class AppSwitchedEventArgs : EventArgs
     {
-        public string ProcessName { get; set; }
-        public string WindowTitle { get; set; }
+        public string ProcessName { get; set; } = string.Empty;
+        public string WindowTitle { get; set; } = string.Empty;
         public int ProcessId { get; set; }
         public IntPtr WindowHandle { get; set; }
     }

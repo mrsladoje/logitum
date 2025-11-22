@@ -126,9 +126,10 @@ public class AppDatabase : IDisposable
         transaction.Commit();
     }
 
-    public async Task<MCPServerData?> SearchToolSDKIndexAsync(string appName)
+    public async Task<List<MCPServerData>> SearchToolSDKIndexAsync(string appName)
     {
         var searchTerm = appName.ToLowerInvariant();
+        var results = new List<MCPServerData>();
 
         var cmd = _connection.CreateCommand();
         cmd.CommandText = @"
@@ -136,12 +137,12 @@ public class AppDatabase : IDisposable
             FROM toolsdk_index
             WHERE LOWER(package_name) LIKE '%' || $searchTerm || '%'
             ORDER BY validated DESC, package_name
-            LIMIT 1
+            LIMIT 10
         ";
         cmd.Parameters.AddWithValue("$searchTerm", searchTerm);
 
         using var reader = await cmd.ExecuteReaderAsync();
-        if (await reader.ReadAsync())
+        while (await reader.ReadAsync())
         {
             var packageName = reader.GetString(0);
             var category = reader.GetString(1);
@@ -150,7 +151,7 @@ public class AppDatabase : IDisposable
 
             var tools = JsonSerializer.Deserialize<Dictionary<string, ToolSDKTool>>(toolsJson);
 
-            return new MCPServerData
+            results.Add(new MCPServerData
             {
                 ServerName = packageName,
                 PackageName = packageName,
@@ -161,10 +162,10 @@ public class AppDatabase : IDisposable
                     kvp => kvp.Key,
                     kvp => new ToolInfo { Name = kvp.Value.Name, Description = kvp.Value.Description }
                 )
-            };
+            });
         }
 
-        return null;
+        return results;
     }
 
     public async Task<bool> IsToolSDKIndexFreshAsync()

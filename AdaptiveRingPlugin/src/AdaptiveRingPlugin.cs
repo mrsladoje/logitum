@@ -8,9 +8,9 @@ namespace Loupedeck.AdaptiveRingPlugin
 
     public class AdaptiveRingPlugin : Plugin
     {
-        private ProcessMonitor _processMonitor;
-        private AppDatabase _database;
-        private MCPRegistryClient _mcpClient;
+        private ProcessMonitor _processMonitor = null!;
+        private AppDatabase _database = null!;
+        private MCPRegistryClient _mcpClient = null!;
 
         // Gets a value indicating whether this is an API-only plugin.
         public override Boolean UsesApplicationApiOnly => true;
@@ -44,7 +44,7 @@ namespace Loupedeck.AdaptiveRingPlugin
 
             // Ensure directory exists
             var dbDir = Path.GetDirectoryName(dbPath);
-            if (!Directory.Exists(dbDir))
+            if (dbDir != null && !Directory.Exists(dbDir))
             {
                 Directory.CreateDirectory(dbDir);
             }
@@ -80,14 +80,14 @@ namespace Loupedeck.AdaptiveRingPlugin
                 _processMonitor.AppSwitched -= OnAppSwitched;
                 _processMonitor.Stop();
                 _processMonitor.Dispose();
-                _processMonitor = null;
+                _processMonitor = null!;
             }
 
             // Dispose database
             if (_database != null)
             {
                 _database.Dispose();
-                _database = null;
+                _database = null!;
             }
 
             PluginLog.Info("👋 AdaptiveRing Plugin unloaded");
@@ -105,7 +105,7 @@ namespace Loupedeck.AdaptiveRingPlugin
             }
         }
 
-        private async void OnAppSwitched(object sender, AppSwitchedEventArgs e)
+        private async void OnAppSwitched(object? sender, AppSwitchedEventArgs e)
         {
             PluginLog.Info($"📱 App Switch Detected: {e.ProcessName}");
             PluginLog.Info($"   Window: {e.WindowTitle}");

@@ -100,7 +100,15 @@ public class MCPRegistryClient
     {
         try
         {
-            return await _database.SearchToolSDKIndexAsync(appName);
+            var results = await _database.SearchToolSDKIndexAsync(appName);
+            if (results.Count == 0)
+                return null;
+
+            if (results.Count == 1)
+                return results[0];
+
+            PluginLog.Info($"Found {results.Count} ToolSDK matches for '{appName}', selecting most general...");
+            return SelectMostGeneralServer(results, appName);
         }
         catch (Exception ex)
         {
@@ -114,6 +122,7 @@ public class MCPRegistryClient
         try
         {
             var searchTerms = GetSearchVariants(appName);
+            var allResults = new List<MCPServerData>();
 
             foreach (var term in searchTerms)
             {
@@ -123,21 +132,33 @@ public class MCPRegistryClient
 
                 if (result?.Servers != null && result.Servers.Count > 0)
                 {
-                    var server = result.Servers[0].Server;
-                    if (server != null)
+                    foreach (var serverWrapper in result.Servers)
                     {
-                        return new MCPServerData
+                        var server = serverWrapper.Server;
+                        if (server != null)
                         {
-                            ServerName = server.Title ?? server.Name,
-                            PackageName = server.Name,
-                            Description = server.Description,
-                            RegistrySource = "Official",
-                            Category = "official",
-                            Validated = true
-                        };
+                            allResults.Add(new MCPServerData
+                            {
+                                ServerName = server.Title ?? server.Name,
+                                PackageName = server.Name,
+                                Description = server.Description,
+                                RegistrySource = "Official",
+                                Category = "official",
+                                Validated = true
+                            });
+                        }
                     }
                 }
             }
+
+            if (allResults.Count == 0)
+                return null;
+
+            if (allResults.Count == 1)
+                return allResults[0];
+
+            PluginLog.Info($"Found {allResults.Count} Official Registry matches for '{appName}', selecting most general...");
+            return SelectMostGeneralServer(allResults, appName);
         }
         catch (Exception ex)
         {
@@ -152,6 +173,7 @@ public class MCPRegistryClient
         try
         {
             var searchTerms = GetSearchVariants(appName);
+            var allResults = new List<MCPServerData>();
 
             foreach (var term in searchTerms)
             {
@@ -161,18 +183,29 @@ public class MCPRegistryClient
 
                 if (result?.Servers != null && result.Servers.Count > 0)
                 {
-                    var server = result.Servers[0];
-                    return new MCPServerData
+                    foreach (var server in result.Servers)
                     {
-                        ServerName = server.Name,
-                        PackageName = $"{server.Namespace}/{server.Slug}",
-                        Description = server.Description,
-                        RegistrySource = "Glama",
-                        Category = "glama",
-                        Validated = false
-                    };
+                        allResults.Add(new MCPServerData
+                        {
+                            ServerName = server.Name,
+                            PackageName = $"{server.Namespace}/{server.Slug}",
+                            Description = server.Description,
+                            RegistrySource = "Glama",
+                            Category = "glama",
+                            Validated = false
+                        });
+                    }
                 }
             }
+
+            if (allResults.Count == 0)
+                return null;
+
+            if (allResults.Count == 1)
+                return allResults[0];
+
+            PluginLog.Info($"Found {allResults.Count} Glama matches for '{appName}', selecting most general...");
+            return SelectMostGeneralServer(allResults, appName);
         }
         catch (Exception ex)
         {
@@ -211,5 +244,140 @@ public class MCPRegistryClient
         }
 
         return variants.Distinct().ToList();
+    }
+
+    /// <summary>
+    /// Selects the most general MCP server from a list of candidates.
+    /// Prefers exact matches, shorter names, and validated packages.
+    /// </summary>
+    private MCPServerData? SelectMostGeneralServer(List<MCPServerData> servers, string searchTerm)
+    {
+        if (servers == null || servers.Count == 0)
+            return null;
+
+        if (servers.Count == 1)
+            return servers[0];
+
+        var scored = servers.Select(server => new
+        {
+            Server = server,
+            Score = CalculateGeneralityScore(server, searchTerm)
+        })
+        .OrderByDescending(x => x.Score)
+        .ToList();
+
+        PluginLog.Info($"Ranked {scored.Count} servers:");
+        foreach (var item in scored.Take(5))
+        {
+            PluginLog.Info($"  - {item.Server.PackageName} (score: {item.Score})");
+        }
+
+        var topScore = scored.First().Score;
+        if (topScore < 0 && scored.Count > 1)
+        {
+            PluginLog.Warning($"Top match has negative score ({topScore}). All candidates may be too specific.");
+        }
+
+        return scored.First().Server;
+    }
+
+    /// <summary>
+    /// Calculates a generality score for an MCP server.
+    /// Higher score = more general/preferred.
+    /// </summary>
+    private int CalculateGeneralityScore(MCPServerData server, string searchTerm)
+    {
+        var score = 0;
+        var packageName = server.PackageName.ToLowerInvariant();
+        var normalizedSearch = searchTerm.ToLowerInvariant();
+
+        // Strip namespace prefixes (e.g., "@cmann50/" or "namespace/")
+        var nameWithoutNamespace = packageName;
+        if (packageName.StartsWith("@"))
+        {
+            var slashIndex = packageName.IndexOf('/');
+            if (slashIndex > 0)
+            {
+                nameWithoutNamespace = packageName.Substring(slashIndex + 1);
+                score -= 150; // Penalize third-party namespaced packages
+            }
+        }
+        else if (packageName.Contains('/'))
+        {
+            var slashIndex = packageName.IndexOf('/');
+            nameWithoutNamespace = packageName.Substring(slashIndex + 1);
+            score -= 100; // Penalize namespaced packages (less than @namespace)
+        }
+
+        // Exact match is best (on name without namespace)
+        if (nameWithoutNamespace == normalizedSearch)
+        {
+            score += 1000;
+        }
+        // Starts with search term (e.g., "chrome-xyz" or "mcp-chrome")
+        else if (nameWithoutNamespace.StartsWith(normalizedSearch + "-") || nameWithoutNamespace.StartsWith(normalizedSearch + "_"))
+        {
+            score += 700;
+        }
+        // Ends with search term (e.g., "xyz-chrome")
+        else if (nameWithoutNamespace.EndsWith("-" + normalizedSearch) || nameWithoutNamespace.EndsWith("_" + normalizedSearch))
+        {
+            score += 600;
+        }
+        // Contains search term (less preferred)
+        else if (nameWithoutNamespace.Contains(normalizedSearch))
+        {
+            score += 300;
+        }
+
+        // Exact match on server name
+        if (server.ServerName.ToLowerInvariant() == normalizedSearch)
+            score += 900;
+
+        // Prefer validated packages
+        if (server.Validated)
+            score += 200;
+
+        // Penalize feature-specific keywords
+        var featureKeywords = new[] { "google-search", "api", "extension", "plugin", "specific", "manager", "tool", "client", "wrapper", "sdk" };
+        foreach (var keyword in featureKeywords)
+        {
+            if (nameWithoutNamespace.Contains(keyword))
+                score -= 200;
+        }
+
+        // Penalize packages with additional words after the search term
+        // Split by hyphens/underscores/slashes and count words
+        var words = nameWithoutNamespace.Split(new[] { '-', '_', '.', '/' }, StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length > 1)
+        {
+            // If search term is found, check if there are words after it
+            var searchIndex = Array.IndexOf(words, normalizedSearch);
+            if (searchIndex >= 0 && searchIndex < words.Length - 1)
+            {
+                // Penalize extra words after the search term
+                var extraWords = words.Length - searchIndex - 1;
+                score -= extraWords * 50;
+            }
+            else if (nameWithoutNamespace.Contains(normalizedSearch))
+            {
+                // Search term is in the name but not as a separate word, still penalize extra words
+                score -= (words.Length - 1) * 30;
+            }
+        }
+
+        // Stricter length penalty: -2 points per character over 8 chars (on name without namespace)
+        if (nameWithoutNamespace.Length > 8)
+            score -= (nameWithoutNamespace.Length - 8) * 2;
+
+        // Fewer special characters = more general
+        var specialCharCount = nameWithoutNamespace.Count(c => c == '-' || c == '_' || c == '.');
+        score -= specialCharCount * 10;
+
+        // Prefer packages without version-like suffixes
+        if (System.Text.RegularExpressions.Regex.IsMatch(nameWithoutNamespace, @"-v?\d+"))
+            score -= 50;
+
+        return score;
     }
 }

@@ -6,7 +6,7 @@ namespace Loupedeck.AdaptiveRingPlugin
 
     internal static class PluginLog
     {
-        private static PluginLogFile _pluginLogFile;
+        private static PluginLogFile _pluginLogFile = null!;
 
         public static void Init(PluginLogFile pluginLogFile)
         {
