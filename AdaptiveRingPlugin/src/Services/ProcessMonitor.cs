@@ -22,8 +22,8 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
         // Constructor for backward compatibility (no services)
         public ProcessMonitor()
         {
-            // Poll every 500ms for foreground window changes
-            _pollTimer = new Timer(500);
+            // Poll every 100ms for foreground window changes
+            _pollTimer = new Timer(100);
             _pollTimer.Elapsed += CheckForegroundProcess;
             _pollTimer.AutoReset = true;
         }
@@ -40,8 +40,8 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
             _geminiSuggestor = geminiSuggestor ?? throw new ArgumentNullException(nameof(geminiSuggestor));
             _mcpClient = mcpClient ?? throw new ArgumentNullException(nameof(mcpClient));
 
-            // Poll every 500ms for foreground window changes
-            _pollTimer = new Timer(500);
+            // Poll every 100ms for foreground window changes
+            _pollTimer = new Timer(100);
             _pollTimer.Elapsed += CheckForegroundProcess;
             _pollTimer.AutoReset = true;
         }
