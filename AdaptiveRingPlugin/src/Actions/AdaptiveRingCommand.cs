@@ -87,19 +87,28 @@ namespace Loupedeck.AdaptiveRingPlugin.Actions
 
             try
             {
-                PluginLog.Info($"Executing action {_position}: {action.ActionName}");
-                
-                if (action.Type == ActionType.Keybind)
+                PluginLog.Info($"Executing action {_position}: {action.ActionName} (Type: {action.Type})");
+
+                switch (action.Type)
                 {
-                    KeybindExecutor.Execute(action);
-                }
-                else if (action.Type == ActionType.Prompt)
-                {
-                     PluginLog.Info($"[TODO] Execute MCP prompt: {action.ActionDataJson}");
-                }
-                else if (action.Type == ActionType.Python)
-                {
-                     PluginLog.Info($"[TODO] Execute Python: {action.ActionDataJson}");
+                    case ActionType.Keybind:
+                        KeybindExecutor.Execute(action);
+                        break;
+
+                    case ActionType.Prompt:
+                        if (_plugin != null)
+                        {
+                            (_plugin as AdaptiveRingPlugin)?.McpPromptExecutor?.Execute(action);
+                        }
+                        break;
+
+                    case ActionType.Python:
+                        PythonScriptExecutor.Execute(action);
+                        break;
+
+                    default:
+                        PluginLog.Warning($"Unknown action type: {action.Type}");
+                        break;
                 }
             }
             catch (Exception ex)

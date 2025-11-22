@@ -46,8 +46,50 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
             { "Y", 0x59 }, { "Z", 0x5A },
             { "0", 0x30 }, { "1", 0x31 }, { "2", 0x32 }, { "3", 0x33 },
             { "4", 0x34 }, { "5", 0x35 }, { "6", 0x36 }, { "7", 0x37 },
-            { "8", 0x38 }, { "9", 0x39 }
+            { "8", 0x38 }, { "9", 0x39 },
+            { "F4", 0x73 } // Alt+F4 support
         };
+
+        /// <summary>
+        /// Smart close method that tries Ctrl+W first, then falls back to Alt+F4
+        /// </summary>
+        private static void ExecuteSmartClose()
+        {
+            PluginLog.Info("KeybindExecutor: Executing smart close (Ctrl+W -> Alt+F4)");
+
+            try
+            {
+                // Try Ctrl+W first
+                var ctrlCode = _keyMap["Ctrl"];
+                var wCode = _keyMap["W"];
+
+                keybd_event(ctrlCode, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
+                keybd_event(wCode, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
+                Thread.Sleep(100);
+                keybd_event(wCode, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
+                keybd_event(ctrlCode, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
+
+                // Wait to see if it worked
+                Thread.Sleep(150);
+
+                // Fallback to Alt+F4
+                PluginLog.Info("KeybindExecutor: Falling back to Alt+F4");
+                var altCode = _keyMap["Alt"];
+                var f4Code = _keyMap["F4"];
+
+                keybd_event(altCode, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
+                keybd_event(f4Code, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
+                Thread.Sleep(100);
+                keybd_event(f4Code, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
+                keybd_event(altCode, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, UIntPtr.Zero);
+
+                PluginLog.Info("KeybindExecutor: Smart close complete");
+            }
+            catch (Exception ex)
+            {
+                PluginLog.Error($"KeybindExecutor: Error in smart close: {ex.Message}");
+            }
+        }
 
         public static void Execute(AppAction action)
         {
@@ -59,6 +101,13 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
                 if (keybindData == null || keybindData.Keys == null || keybindData.Keys.Count == 0)
                 {
                     PluginLog.Warning("KeybindExecutor: No keys found in action data");
+                    return;
+                }
+
+                // Check if this is a "Close" action
+                if (action.ActionName.Equals("Close", StringComparison.OrdinalIgnoreCase))
+                {
+                    ExecuteSmartClose();
                     return;
                 }
 
@@ -79,7 +128,7 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
                         {
                             // This is a rough fallback, better to rely on map
                              // char c = char.ToUpper(key[0]);
-                             // keyCodes.Add((byte)c); 
+                             // keyCodes.Add((byte)c);
                              PluginLog.Warning($"KeybindExecutor: Unknown key '{key}'");
                         }
                     }
@@ -93,8 +142,8 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
                     keybd_event(code, 0, KEYEVENTF_EXTENDEDKEY, UIntPtr.Zero);
                 }
 
-                // Small delay to register
-                Thread.Sleep(50);
+                // Improved delay for better reliability
+                Thread.Sleep(100);
 
                 // Release all keys in reverse order
                 keyCodes.Reverse();

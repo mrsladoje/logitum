@@ -43,13 +43,13 @@ public class GeminiActionSuggestor
         }
     }
 
-    public async Task<List<AppAction>> SuggestActionsAsync(string appName, List<MCPServerData>? mcpServers)
+    public async Task<List<AppAction>> SuggestActionsAsync(string appName, List<MCPServerData>? mcpServers, bool mcpAvailable = true)
     {
         // If API key is missing or model failed to initialize, return fallback
         if (_model == null)
         {
-            PluginLog.Info($"Using fallback actions for {appName}");
-            return GetFallbackActions(appName);
+            PluginLog.Info($"Using universal default actions for {appName}");
+            return GetUniversalDefaultActions(appName);
         }
 
         try
@@ -57,7 +57,7 @@ public class GeminiActionSuggestor
             PluginLog.Info($"Requesting Gemini AI suggestions for {appName}...");
 
             // Build the prompt
-            var prompt = BuildPrompt(appName, mcpServers);
+            var prompt = BuildPrompt(appName, mcpServers, mcpAvailable);
             PluginLog.Verbose($"Prompt: {prompt}");
 
             // Call Gemini API
@@ -77,19 +77,19 @@ public class GeminiActionSuggestor
             }
             else
             {
-                PluginLog.Warning($"Gemini returned {actions.Count} actions instead of 8. Using fallback.");
-                return GetFallbackActions(appName);
+                PluginLog.Warning($"Gemini returned {actions.Count} actions instead of 8. Using universal defaults.");
+                return GetUniversalDefaultActions(appName);
             }
         }
         catch (Exception ex)
         {
             PluginLog.Error($"Error calling Gemini API: {ex.Message}");
-            PluginLog.Info($"Using fallback actions for {appName}");
-            return GetFallbackActions(appName);
+            PluginLog.Info($"Using universal default actions for {appName}");
+            return GetUniversalDefaultActions(appName);
         }
     }
 
-    private string BuildPrompt(string appName, List<MCPServerData>? mcpServers)
+    private string BuildPrompt(string appName, List<MCPServerData>? mcpServers, bool mcpAvailable)
     {
         var prompt = $@"You are an expert at creating productivity workflows for {appName}.
 
@@ -100,10 +100,14 @@ Priority order for action types:
 2. Prompt (when MCP tools are available) - Use for AI-assisted tasks
 3. Python (for complex automation) - Use for advanced scripting
 
+Action type mixing guidelines:
+- Aim for 60% Keybind, 30% Prompt (if MCP available), 10% Python
+- If no MCP tools are available, use 100% Keybind actions
+
 ";
 
         // Add MCP tools information if available
-        if (mcpServers != null && mcpServers.Count > 0)
+        if (mcpAvailable && mcpServers != null && mcpServers.Count > 0)
         {
             prompt += "Available MCP tools:\n";
             foreach (var server in mcpServers)
@@ -118,6 +122,10 @@ Priority order for action types:
                 }
             }
             prompt += "\n";
+        }
+        else if (!mcpAvailable)
+        {
+            prompt += "Note: No MCP tools are available for this app. Use only Keybind actions.\n\n";
         }
 
         prompt += @"Return ONLY a valid JSON array with exactly 8 objects in this exact format:
@@ -200,7 +208,7 @@ Generate 8 optimal actions now:";
             if (geminiActions == null || geminiActions.Count != 8)
             {
                 PluginLog.Warning($"Invalid Gemini response: Expected 8 actions, got {geminiActions?.Count ?? 0}");
-                return GetFallbackActions(appName);
+                return GetUniversalDefaultActions(appName);
             }
 
             var actions = new List<AppAction>();
@@ -221,12 +229,12 @@ Generate 8 optimal actions now:";
                 }
             }
 
-            return actions.Count == 8 ? actions : GetFallbackActions(appName);
+            return actions.Count == 8 ? actions : GetUniversalDefaultActions(appName);
         }
         catch (Exception ex)
         {
             PluginLog.Error($"Error parsing Gemini response: {ex.Message}");
-            return GetFallbackActions(appName);
+            return GetUniversalDefaultActions(appName);
         }
     }
 
@@ -290,7 +298,7 @@ Generate 8 optimal actions now:";
         };
     }
 
-    private List<AppAction> GetFallbackActions(string appName)
+    private List<AppAction> GetUniversalDefaultActions(string appName)
     {
         var fallbackActions = new List<(string name, List<string> keys, string desc)>
         {
@@ -299,9 +307,9 @@ Generate 8 optimal actions now:";
             ("Save", new List<string> { "Ctrl", "S" }, "Save current file"),
             ("Undo", new List<string> { "Ctrl", "Z" }, "Undo last action"),
             ("Find", new List<string> { "Ctrl", "F" }, "Find text"),
-            ("New", new List<string> { "Ctrl", "N" }, "Create new"),
-            ("Open", new List<string> { "Ctrl", "O" }, "Open file"),
-            ("Close", new List<string> { "Ctrl", "W" }, "Close window")
+            ("Select All", new List<string> { "Ctrl", "A" }, "Select all"),
+            ("New Tab", new List<string> { "Ctrl", "T" }, "New tab"),
+            ("Close", new List<string> { "Ctrl", "W" }, "Smart close")
         };
 
         var actions = new List<AppAction>();
@@ -329,7 +337,7 @@ Generate 8 optimal actions now:";
             actions.Add(action);
         }
 
-        PluginLog.Info($"Generated {actions.Count} fallback actions for {appName}");
+        PluginLog.Info($"Generated {actions.Count} universal default actions for {appName}");
         return actions;
     }
 

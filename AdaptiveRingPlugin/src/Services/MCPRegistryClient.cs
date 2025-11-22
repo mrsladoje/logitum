@@ -144,7 +144,10 @@ public class MCPRegistryClient
                                 Description = server.Description,
                                 RegistrySource = "Official",
                                 Category = "official",
-                                Validated = true
+                                Validated = true,
+                                ConnectionType = "stdio",
+                                StdioCommand = BuildStdioCommand(server.Name),
+                                InstallCommand = $"npm install -g {server.Name}"
                             });
                         }
                     }
@@ -185,14 +188,18 @@ public class MCPRegistryClient
                 {
                     foreach (var server in result.Servers)
                     {
+                        var packageName = $"{server.Namespace}/{server.Slug}";
                         allResults.Add(new MCPServerData
                         {
                             ServerName = server.Name,
-                            PackageName = $"{server.Namespace}/{server.Slug}",
+                            PackageName = packageName,
                             Description = server.Description,
                             RegistrySource = "Glama",
                             Category = "glama",
-                            Validated = false
+                            Validated = false,
+                            ConnectionType = "stdio",
+                            StdioCommand = BuildStdioCommand(packageName),
+                            InstallCommand = $"npm install -g {packageName}"
                         });
                     }
                 }
@@ -244,6 +251,15 @@ public class MCPRegistryClient
         }
 
         return variants.Distinct().ToList();
+    }
+
+    /// <summary>
+    /// Builds a heuristic stdio command for launching an MCP server via npx.
+    /// </summary>
+    private string BuildStdioCommand(string packageName)
+    {
+        // All MCP servers follow the npx pattern
+        return $"npx {packageName}";
     }
 
     /// <summary>

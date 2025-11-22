@@ -25,7 +25,10 @@ public class AppDatabase : IDisposable
                 registry_source TEXT,
                 server_name TEXT,
                 server_json TEXT,
-                cached_at TEXT
+                cached_at TEXT,
+                connection_type TEXT,
+                stdio_command TEXT,
+                sse_url TEXT
             );
 
             CREATE TABLE IF NOT EXISTS toolsdk_index (
@@ -54,6 +57,14 @@ public class AppDatabase : IDisposable
                 enabled INTEGER NOT NULL DEFAULT 1,
                 FOREIGN KEY (app_name) REFERENCES remembered_apps(app_name) ON DELETE CASCADE,
                 UNIQUE (app_name, position)
+            );
+
+            CREATE TABLE IF NOT EXISTS universal_defaults (
+                position INTEGER PRIMARY KEY,
+                action_type TEXT NOT NULL,
+                action_name TEXT NOT NULL,
+                action_data TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1
             );
 
             CREATE INDEX IF NOT EXISTS idx_cache_time ON mcp_cache(cached_at);

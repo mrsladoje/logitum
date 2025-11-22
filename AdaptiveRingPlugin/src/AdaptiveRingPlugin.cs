@@ -13,8 +13,10 @@ namespace Loupedeck.AdaptiveRingPlugin
         private MCPRegistryClient _mcpClient = null!;
         private ActionPersistenceService _persistenceService = null!;
         private GeminiActionSuggestor _geminiSuggestor = null!;
-        
+        private MCPPromptExecutor _mcpPromptExecutor = null!;
+
         public ActionsRingManager ActionsRingManager { get; private set; } = null!;
+        public MCPPromptExecutor McpPromptExecutor => _mcpPromptExecutor;
 
         // Gets a value indicating whether this is an API-only plugin.
         public override Boolean UsesApplicationApiOnly => true;
@@ -72,6 +74,10 @@ namespace Loupedeck.AdaptiveRingPlugin
             _persistenceService = new ActionPersistenceService(_database);
             PluginLog.Info("✅ Action Persistence Service initialized");
 
+            // Initialize MCP Prompt Executor
+            _mcpPromptExecutor = new MCPPromptExecutor(_database);
+            PluginLog.Info("✅ MCP Prompt Executor initialized");
+
             // Initialize Actions Ring Manager
             ActionsRingManager = new ActionsRingManager(_persistenceService, this);
             PluginLog.Info("✅ Actions Ring Manager initialized");
@@ -101,6 +107,9 @@ namespace Loupedeck.AdaptiveRingPlugin
                 _processMonitor.Dispose();
                 _processMonitor = null!;
             }
+
+            // Cleanup MCP connections
+            MCPPromptExecutor.Cleanup();
 
             // Dispose database
             if (_database != null)

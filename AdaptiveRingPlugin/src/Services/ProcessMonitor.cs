@@ -144,8 +144,7 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
                 if (mcpServer == null)
                 {
                     PluginLog.Info($"ProcessMonitor: No MCP server found for {appName}");
-                    // ShowNotification($"No tools available for {appName}");
-                    // Instead of returning, proceed to Gemini to get Keybind/Python suggestions even without MCP tools
+                    PluginLog.Info($"ProcessMonitor: Will request keybind-only suggestions from Gemini");
                 }
                 else
                 {
@@ -157,7 +156,7 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
                 // Step 5: Call Gemini to suggest actions
                 PluginLog.Info($"ProcessMonitor: Requesting AI-suggested actions for {appName}...");
                 var mcpServers = mcpServer != null ? new List<Models.MCPServerData> { mcpServer } : new List<Models.MCPServerData>();
-                var suggestedActions = await _geminiSuggestor!.SuggestActionsAsync(appName, mcpServers);
+                var suggestedActions = await _geminiSuggestor!.SuggestActionsAsync(appName, mcpServers, mcpAvailable: mcpServer != null);
 
                 if (suggestedActions == null || suggestedActions.Count == 0)
                 {
@@ -170,7 +169,7 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
 
                 // Step 6: Persist the actions
                 var displayName = string.IsNullOrWhiteSpace(windowTitle) ? appName : windowTitle;
-                _persistenceService!.SaveAppActions(appName, displayName, suggestedActions, mcpServer.ServerName);
+                _persistenceService!.SaveAppActions(appName, displayName, suggestedActions, mcpServer?.ServerName);
                 PluginLog.Info($"ProcessMonitor: Actions persisted for {appName}");
 
                 // Step 7: Update the actions ring

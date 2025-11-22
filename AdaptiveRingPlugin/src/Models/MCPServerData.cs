@@ -9,6 +9,12 @@ public class MCPServerData
     public string RegistrySource { get; set; } = string.Empty;
     public bool Validated { get; set; }
     public Dictionary<string, ToolInfo>? Tools { get; set; }
+
+    // Connection information for MCP server
+    public string? ConnectionType { get; set; }  // "stdio" or "sse"
+    public string? StdioCommand { get; set; }    // e.g. "npx @modelcontextprotocol/server-vscode"
+    public string? SseUrl { get; set; }          // e.g. "http://localhost:3000/sse"
+    public string? InstallCommand { get; set; }  // e.g. "npm install -g @modelcontextprotocol/server-vscode"
 }
 
 public class ToolInfo
