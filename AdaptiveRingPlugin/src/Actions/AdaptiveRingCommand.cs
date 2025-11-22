@@ -89,8 +89,18 @@ namespace Loupedeck.AdaptiveRingPlugin.Actions
             {
                 PluginLog.Info($"Executing action {_position}: {action.ActionName}");
                 
-                // TODO: Implement execution logic here or delegate
-                // For now just log
+                if (action.Type == ActionType.Keybind)
+                {
+                    KeybindExecutor.Execute(action);
+                }
+                else if (action.Type == ActionType.Prompt)
+                {
+                     PluginLog.Info($"[TODO] Execute MCP prompt: {action.ActionDataJson}");
+                }
+                else if (action.Type == ActionType.Python)
+                {
+                     PluginLog.Info($"[TODO] Execute Python: {action.ActionDataJson}");
+                }
             }
             catch (Exception ex)
             {

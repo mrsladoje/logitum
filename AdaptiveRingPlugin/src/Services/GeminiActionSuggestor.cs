@@ -22,6 +22,9 @@ public class GeminiActionSuggestor
         if (string.IsNullOrWhiteSpace(_apiKey))
         {
             PluginLog.Warning("GEMINI_API_KEY environment variable not set. Will use fallback actions.");
+            // Uncomment to disable fallback and force no-op if key is missing
+            // _model = null;
+            // For now, we continue without a model which will trigger fallback logic in SuggestActionsAsync
             _model = null;
         }
         else

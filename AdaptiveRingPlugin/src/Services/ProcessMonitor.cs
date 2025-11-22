@@ -144,19 +144,19 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
                 if (mcpServer == null)
                 {
                     PluginLog.Info($"ProcessMonitor: No MCP server found for {appName}");
-                    ShowNotification($"No tools available for {appName}");
-                    return;
+                    // ShowNotification($"No tools available for {appName}");
+                    // Instead of returning, proceed to Gemini to get Keybind/Python suggestions even without MCP tools
+                }
+                else
+                {
+                    PluginLog.Info($"ProcessMonitor: MCP Server Found: {mcpServer.ServerName}");
                 }
 
-                PluginLog.Info($"ProcessMonitor: MCP Server Found: {mcpServer.ServerName}");
-
-                // Step 4: Hybrid MCP connection (5-second timeout to get tools)
-                // TODO: This will be implemented when MCP connection logic is added
-                // For now, we'll use the server data we have
+                // Step 4: Hybrid MCP connection (skipped for now)
 
                 // Step 5: Call Gemini to suggest actions
                 PluginLog.Info($"ProcessMonitor: Requesting AI-suggested actions for {appName}...");
-                var mcpServers = new List<Models.MCPServerData> { mcpServer };
+                var mcpServers = mcpServer != null ? new List<Models.MCPServerData> { mcpServer } : new List<Models.MCPServerData>();
                 var suggestedActions = await _geminiSuggestor!.SuggestActionsAsync(appName, mcpServers);
 
                 if (suggestedActions == null || suggestedActions.Count == 0)
