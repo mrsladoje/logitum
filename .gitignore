@@ -1,0 +1,162 @@
+# ===================================================================
+# Logitum MCP Adaptive Ring - Git Ignore Configuration
+# ===================================================================
+
+## Build Outputs
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+*.user
+*.suo
+*.cache
+
+## Visual Studio
+.vs/
+*.sln.docstates
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.vscode/settings.json
+.vscode/tasks.json
+.vscode/launch.json
+
+## User-specific settings
+**/settings.local.json
+*.local.json
+
+## NuGet
+packages/
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## Build Results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## StyleCop
+StyleCopReport.xml
+
+## Files built by Visual Studio
+*_i.c
+*_p.c
+*_h.h
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.pch
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*_wpftmp.csproj
+*.log
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.svclog
+*.scc
+
+## Test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.VisualState.xml
+TestResult.xml
+[Dd]ebugPS/
+[Rr]eleasePS/
+dlldata.c
+
+## Database
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+## Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+## OS Files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+## IDE
+.idea/
+*.iml
+*.iws
+.vscode/
+.vs/
+
+## Python (for MCP tools)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+## Node.js (for potential MCP servers)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+## Logs
+*.log
+logs/
+
+## API Keys and Secrets
+*.env
+.env.local
+.env.*.local
+secrets.json
+appsettings.local.json
+settings.local.json
+
+## Downloaded Installers
+*.msi
+*_installer.exe
+
+## Keep
+!.gitignore
+!.gitkeep

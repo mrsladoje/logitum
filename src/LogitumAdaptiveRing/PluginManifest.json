@@ -1,0 +1,63 @@
+{
+  "plugin": {
+    "name": "MCP Adaptive Ring",
+    "version": "0.1.0",
+    "author": "SlothLite Development Team",
+    "description": "AI-powered, self-adapting Actions Ring that discovers and suggests relevant MCP tools based on your current application context.",
+    "category": "Productivity",
+    "icon": "adaptive-ring-icon.png",
+    "settings": {
+      "enableLearning": {
+        "type": "boolean",
+        "default": true,
+        "label": "Enable Behavioral Learning",
+        "description": "Allow the system to learn from your actions and adapt suggestions"
+      },
+      "updateFrequency": {
+        "type": "number",
+        "default": 30,
+        "min": 10,
+        "max": 300,
+        "label": "Learning Update Frequency (seconds)",
+        "description": "How often to process learned behaviors"
+      },
+      "suggestionThreshold": {
+        "type": "number",
+        "default": 3,
+        "min": 1,
+        "max": 10,
+        "label": "Suggestion Threshold",
+        "description": "Number of repetitions before suggesting a new action"
+      }
+    },
+    "capabilities": [
+      "app-context-detection",
+      "mcp-registry-integration",
+      "ai-powered-suggestions",
+      "behavioral-learning",
+      "actions-ring-control"
+    ],
+    "requiredAPIs": [
+      "ProcessMonitoring",
+      "ActionsRingControl",
+      "HTTPClient"
+    ],
+    "externalServices": [
+      {
+        "name": "MCP Registry API",
+        "endpoint": "https://registry.modelcontextprotocol.io",
+        "purpose": "Discover available MCP servers for applications"
+      },
+      {
+        "name": "Claude API",
+        "endpoint": "https://api.anthropic.com",
+        "purpose": "AI-powered workflow suggestions and semantic interpretation"
+      },
+      {
+        "name": "OpenAI Embeddings",
+        "endpoint": "https://api.openai.com",
+        "purpose": "Vector embeddings for action similarity clustering"
+      }
+    ]
+  }
+}
