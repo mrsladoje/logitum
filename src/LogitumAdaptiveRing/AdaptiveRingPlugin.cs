@@ -24,32 +24,60 @@ namespace Loupedeck.LogitumAdaptiveRing
         private MCPRegistryClient _mcpClient;
         private AppDatabase _database;
 
-        // Removed UsesApplicationApiOnly and HasNoApplication - testing if these cause issues
+        /// <summary>
+        /// Gets a value indicating whether this is an API-only plugin.
+        /// </summary>
+        public override bool UsesApplicationApiOnly => true;
+
+        /// <summary>
+        /// Gets a value indicating whether this is a Universal plugin (not tied to specific app).
+        /// </summary>
+        public override bool HasNoApplication => true;
 
         /// <summary>
         /// Initializes a new instance of the AdaptiveRingPlugin class.
         /// </summary>
         public AdaptiveRingPlugin()
         {
-            // Initialize logging
-            this.Log.Info($"{LogTag} Plugin constructor called");
+            try
+            {
+                // Initialize logging
+                this.Log.Info($"{LogTag} ========================================");
+                this.Log.Info($"{LogTag} Plugin constructor START");
+                this.Log.Info($"{LogTag} ========================================");
 
-            // Phase 2: Initialize process monitor
-            this._processMonitor = new ProcessMonitor();
-            this.Log.Info($"{LogTag} ProcessMonitor initialized");
+                // Phase 2: Initialize process monitor
+                this.Log.Info($"{LogTag} [1/4] Creating ProcessMonitor...");
+                this._processMonitor = new ProcessMonitor();
+                this.Log.Info($"{LogTag} [1/4] ProcessMonitor initialized ✓");
 
-            // Phase 3: Initialize MCP registry client and database
-            var dbPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Logitum", "adaptivering.db"
-            );
-            this._database = new AppDatabase(dbPath);
-            this.Log.Info($"{LogTag} Database initialized at: {dbPath}");
+                // Phase 3: Initialize MCP registry client and database
+                this.Log.Info($"{LogTag} [2/4] Setting up database path...");
+                var dbPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Logitum", "adaptivering.db"
+                );
+                this.Log.Info($"{LogTag} [2/4] Database path: {dbPath}");
 
-            this._mcpClient = new MCPRegistryClient();
-            this.Log.Info($"{LogTag} MCP Registry client initialized");
+                this.Log.Info($"{LogTag} [3/4] Creating AppDatabase...");
+                this._database = new AppDatabase(dbPath);
+                this.Log.Info($"{LogTag} [3/4] Database initialized ✓");
 
-            // TODO: Phase 4 - Initialize UI automation tracker
+                this.Log.Info($"{LogTag} [4/4] Creating MCPRegistryClient...");
+                this._mcpClient = new MCPRegistryClient();
+                this.Log.Info($"{LogTag} [4/4] MCP Registry client initialized ✓");
+
+                this.Log.Info($"{LogTag} ========================================");
+                this.Log.Info($"{LogTag} Plugin constructor COMPLETE");
+                this.Log.Info($"{LogTag} Constructor completed - WAITING FOR Load() to be called by plugin service...");
+                this.Log.Info($"{LogTag} ========================================");
+            }
+            catch (Exception ex)
+            {
+                this.Log.Error($"{LogTag} ❌ FATAL ERROR in constructor: {ex.Message}");
+                this.Log.Error($"{LogTag} Stack trace: {ex.StackTrace}");
+                throw;
+            }
         }
 
         /// <summary>
@@ -60,23 +88,33 @@ namespace Loupedeck.LogitumAdaptiveRing
         {
             try
             {
-                this.Log.Info($"{LogTag} Plugin loading...");
+                this.Log.Info($"{LogTag} ****************************************");
+                this.Log.Info($"{LogTag} *** Load() METHOD CALLED BY SERVICE ***");
+                this.Log.Info($"{LogTag} ****************************************");
+                this.Log.Info($"{LogTag} Starting plugin initialization...");
 
                 // Phase 2: Start process monitor
+                this.Log.Info($"{LogTag} [LOAD-1] Subscribing to ApplicationChanged event...");
                 this._processMonitor.ApplicationChanged += this.OnApplicationChanged;
+                this.Log.Info($"{LogTag} [LOAD-1] Event subscription complete ✓");
+
+                this.Log.Info($"{LogTag} [LOAD-2] Starting ProcessMonitor...");
                 this._processMonitor.Start();
-                this.Log.Info($"{LogTag} ProcessMonitor started - monitoring active window changes");
+                this.Log.Info($"{LogTag} [LOAD-2] ProcessMonitor started ✓ - monitoring active window changes");
 
                 // TODO: Phase 2 - Start MCP registry queries
                 // TODO: Phase 3 - Start UI automation tracking
                 // TODO: Phase 4 - Initialize AI suggestion engine
 
-                this.Log.Info($"{LogTag} Plugin loaded successfully ✅");
+                this.Log.Info($"{LogTag} ****************************************");
+                this.Log.Info($"{LogTag} *** PLUGIN LOADED SUCCESSFULLY ✅ ***");
+                this.Log.Info($"{LogTag} ****************************************");
             }
             catch (Exception ex)
             {
-                this.Log.Error($"{LogTag} ERROR during plugin load: {ex.Message}");
+                this.Log.Error($"{LogTag} ❌❌❌ ERROR during plugin load: {ex.Message}");
                 this.Log.Error($"{LogTag} Stack trace: {ex.StackTrace}");
+                throw;
             }
         }
 
@@ -88,38 +126,45 @@ namespace Loupedeck.LogitumAdaptiveRing
         {
             try
             {
-                this.Log.Info($"{LogTag} Plugin unloading...");
+                this.Log.Info($"{LogTag} ========================================");
+                this.Log.Info($"{LogTag} Unload() METHOD CALLED - Plugin unloading...");
+                this.Log.Info($"{LogTag} ========================================");
 
                 // Phase 2: Stop process monitor
                 if (this._processMonitor != null)
                 {
+                    this.Log.Info($"{LogTag} [UNLOAD-1] Unsubscribing from ApplicationChanged event...");
                     this._processMonitor.ApplicationChanged -= this.OnApplicationChanged;
+                    this.Log.Info($"{LogTag} [UNLOAD-2] Stopping ProcessMonitor...");
                     this._processMonitor.Stop();
+                    this.Log.Info($"{LogTag} [UNLOAD-3] Disposing ProcessMonitor...");
                     this._processMonitor.Dispose();
-                    this.Log.Info($"{LogTag} ProcessMonitor stopped and disposed");
+                    this.Log.Info($"{LogTag} ProcessMonitor stopped and disposed ✓");
                 }
 
                 // Phase 3: Cleanup MCP client and database
                 if (this._mcpClient != null)
                 {
+                    this.Log.Info($"{LogTag} [UNLOAD-4] Disposing MCP Registry client...");
                     this._mcpClient.Dispose();
-                    this.Log.Info($"{LogTag} MCP Registry client disposed");
+                    this.Log.Info($"{LogTag} MCP Registry client disposed ✓");
                 }
 
                 if (this._database != null)
                 {
+                    this.Log.Info($"{LogTag} [UNLOAD-5] Disposing Database connection...");
                     this._database.Dispose();
-                    this.Log.Info($"{LogTag} Database connection disposed");
+                    this.Log.Info($"{LogTag} Database connection disposed ✓");
                 }
 
-                // TODO: Phase 4 - Stop UI automation tracker
-                // TODO: Phase 5 - Shutdown AI services
-
-                this.Log.Info($"{LogTag} Plugin unloaded successfully");
+                this.Log.Info($"{LogTag} ========================================");
+                this.Log.Info($"{LogTag} Plugin unloaded successfully ✓");
+                this.Log.Info($"{LogTag} ========================================");
             }
             catch (Exception ex)
             {
-                this.Log.Error($"{LogTag} ERROR during plugin unload: {ex.Message}");
+                this.Log.Error($"{LogTag} ❌ ERROR during plugin unload: {ex.Message}");
+                this.Log.Error($"{LogTag} Stack trace: {ex.StackTrace}");
             }
         }
 

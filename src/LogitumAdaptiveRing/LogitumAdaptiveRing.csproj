@@ -25,7 +25,7 @@
     <OutputPath>$(BaseOutputPath)$(Configuration)\bin\</OutputPath>
 
     <!-- Plugin Short Name (used for reload command) -->
-    <PluginShortName>MCPAdaptiveRing</PluginShortName>
+    <PluginShortName>LogitumAdaptiveRing</PluginShortName>
 
     <!-- Metadata -->
     <Version>0.1.0</Version>
