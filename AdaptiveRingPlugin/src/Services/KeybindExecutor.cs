@@ -34,6 +34,7 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
             { "Back", 0x08 }, { "Backspace", 0x08 },
             { "Del", 0x2E }, { "Delete", 0x2E },
             { "Up", 0x26 }, { "Down", 0x28 }, { "Left", 0x25 }, { "Right", 0x27 },
+            { "ArrowUp", 0x26 }, { "ArrowDown", 0x28 }, { "ArrowLeft", 0x25 }, { "ArrowRight", 0x27 },
             { "F1", 0x70 }, { "F2", 0x71 }, { "F3", 0x72 }, { "F4", 0x73 },
             { "F5", 0x74 }, { "F6", 0x75 }, { "F7", 0x76 }, { "F8", 0x77 },
             { "F9", 0x78 }, { "F10", 0x79 }, { "F11", 0x7A }, { "F12", 0x7B },
@@ -47,7 +48,9 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
             { "0", 0x30 }, { "1", 0x31 }, { "2", 0x32 }, { "3", 0x33 },
             { "4", 0x34 }, { "5", 0x35 }, { "6", 0x36 }, { "7", 0x37 },
             { "8", 0x38 }, { "9", 0x39 },
-            { "F4", 0x73 } // Alt+F4 support
+            { "+", 0xBB }, { "Plus", 0xBB }, { "=", 0xBB },
+            { "-", 0xBD }, { "Minus", 0xBD }, { "_", 0xBD },
+            { "/", 0xBF }, { "Slash", 0xBF }, { "?", 0xBF }
         };
 
         /// <summary>
