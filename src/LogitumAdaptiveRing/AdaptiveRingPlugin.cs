@@ -1,7 +1,11 @@
 namespace Loupedeck.LogitumAdaptiveRing
 {
     using System;
+    using System.IO;
+    using System.Collections.Generic;
+    using System.Threading.Tasks;
     using Loupedeck.LogitumAdaptiveRing.Services;
+    using Loupedeck.LogitumAdaptiveRing.Data;
 
     /// <summary>
     /// MCP Adaptive Ring - Main Plugin Class
@@ -16,9 +20,12 @@ namespace Loupedeck.LogitumAdaptiveRing
         // Phase 2: Process Monitoring
         private ProcessMonitor _processMonitor;
 
+        // Phase 3: MCP Registry Integration
+        private MCPRegistryClient _mcpClient;
+        private AppDatabase _database;
+
         /// <summary>
         /// Gets a value indicating whether this is an API-only plugin.
-        /// MCP Adaptive Ring works across all applications, so it's API-only.
         /// </summary>
         public override bool UsesApplicationApiOnly => true;
 
@@ -32,16 +39,45 @@ namespace Loupedeck.LogitumAdaptiveRing
         /// </summary>
         public AdaptiveRingPlugin()
         {
-            // Initialize logging
-            this.Log.Info($"{LogTag} Plugin constructor called");
+            try
+            {
+                // Initialize logging
+                this.Log.Info($"{LogTag} ========================================");
+                this.Log.Info($"{LogTag} Plugin constructor START");
+                this.Log.Info($"{LogTag} ========================================");
 
-            // Phase 2: Initialize process monitor
-            this._processMonitor = new ProcessMonitor();
-            this.Log.Info($"{LogTag} ProcessMonitor initialized");
+                // Phase 2: Initialize process monitor
+                this.Log.Info($"{LogTag} [1/4] Creating ProcessMonitor...");
+                this._processMonitor = new ProcessMonitor();
+                this.Log.Info($"{LogTag} [1/4] ProcessMonitor initialized ✓");
 
-            // TODO: Phase 2 - Initialize MCP registry client
-            // TODO: Phase 3 - Initialize UI automation tracker
-            // TODO: Phase 3 - Initialize SQLite database
+                // Phase 3: Initialize MCP registry client and database
+                this.Log.Info($"{LogTag} [2/4] Setting up database path...");
+                var dbPath = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Logitum", "adaptivering.db"
+                );
+                this.Log.Info($"{LogTag} [2/4] Database path: {dbPath}");
+
+                this.Log.Info($"{LogTag} [3/4] Creating AppDatabase...");
+                this._database = new AppDatabase(dbPath);
+                this.Log.Info($"{LogTag} [3/4] Database initialized ✓");
+
+                this.Log.Info($"{LogTag} [4/4] Creating MCPRegistryClient...");
+                this._mcpClient = new MCPRegistryClient();
+                this.Log.Info($"{LogTag} [4/4] MCP Registry client initialized ✓");
+
+                this.Log.Info($"{LogTag} ========================================");
+                this.Log.Info($"{LogTag} Plugin constructor COMPLETE");
+                this.Log.Info($"{LogTag} Constructor completed - WAITING FOR Load() to be called by plugin service...");
+                this.Log.Info($"{LogTag} ========================================");
+            }
+            catch (Exception ex)
+            {
+                this.Log.Error($"{LogTag} ❌ FATAL ERROR in constructor: {ex.Message}");
+                this.Log.Error($"{LogTag} Stack trace: {ex.StackTrace}");
+                throw;
+            }
         }
 
         /// <summary>
@@ -52,23 +88,33 @@ namespace Loupedeck.LogitumAdaptiveRing
         {
             try
             {
-                this.Log.Info($"{LogTag} Plugin loading...");
+                this.Log.Info($"{LogTag} ****************************************");
+                this.Log.Info($"{LogTag} *** Load() METHOD CALLED BY SERVICE ***");
+                this.Log.Info($"{LogTag} ****************************************");
+                this.Log.Info($"{LogTag} Starting plugin initialization...");
 
                 // Phase 2: Start process monitor
+                this.Log.Info($"{LogTag} [LOAD-1] Subscribing to ApplicationChanged event...");
                 this._processMonitor.ApplicationChanged += this.OnApplicationChanged;
+                this.Log.Info($"{LogTag} [LOAD-1] Event subscription complete ✓");
+
+                this.Log.Info($"{LogTag} [LOAD-2] Starting ProcessMonitor...");
                 this._processMonitor.Start();
-                this.Log.Info($"{LogTag} ProcessMonitor started - monitoring active window changes");
+                this.Log.Info($"{LogTag} [LOAD-2] ProcessMonitor started ✓ - monitoring active window changes");
 
                 // TODO: Phase 2 - Start MCP registry queries
                 // TODO: Phase 3 - Start UI automation tracking
                 // TODO: Phase 4 - Initialize AI suggestion engine
 
-                this.Log.Info($"{LogTag} Plugin loaded successfully ✅");
+                this.Log.Info($"{LogTag} ****************************************");
+                this.Log.Info($"{LogTag} *** PLUGIN LOADED SUCCESSFULLY ✅ ***");
+                this.Log.Info($"{LogTag} ****************************************");
             }
             catch (Exception ex)
             {
-                this.Log.Error($"{LogTag} ERROR during plugin load: {ex.Message}");
+                this.Log.Error($"{LogTag} ❌❌❌ ERROR during plugin load: {ex.Message}");
                 this.Log.Error($"{LogTag} Stack trace: {ex.StackTrace}");
+                throw;
             }
         }
 
@@ -80,31 +126,50 @@ namespace Loupedeck.LogitumAdaptiveRing
         {
             try
             {
-                this.Log.Info($"{LogTag} Plugin unloading...");
+                this.Log.Info($"{LogTag} ========================================");
+                this.Log.Info($"{LogTag} Unload() METHOD CALLED - Plugin unloading...");
+                this.Log.Info($"{LogTag} ========================================");
 
                 // Phase 2: Stop process monitor
                 if (this._processMonitor != null)
                 {
+                    this.Log.Info($"{LogTag} [UNLOAD-1] Unsubscribing from ApplicationChanged event...");
                     this._processMonitor.ApplicationChanged -= this.OnApplicationChanged;
+                    this.Log.Info($"{LogTag} [UNLOAD-2] Stopping ProcessMonitor...");
                     this._processMonitor.Stop();
+                    this.Log.Info($"{LogTag} [UNLOAD-3] Disposing ProcessMonitor...");
                     this._processMonitor.Dispose();
-                    this.Log.Info($"{LogTag} ProcessMonitor stopped and disposed");
+                    this.Log.Info($"{LogTag} ProcessMonitor stopped and disposed ✓");
                 }
 
-                // TODO: Phase 3 - Flush database
-                // TODO: Phase 3 - Stop UI automation tracker
-                // TODO: Phase 4 - Shutdown AI services
+                // Phase 3: Cleanup MCP client and database
+                if (this._mcpClient != null)
+                {
+                    this.Log.Info($"{LogTag} [UNLOAD-4] Disposing MCP Registry client...");
+                    this._mcpClient.Dispose();
+                    this.Log.Info($"{LogTag} MCP Registry client disposed ✓");
+                }
 
-                this.Log.Info($"{LogTag} Plugin unloaded successfully");
+                if (this._database != null)
+                {
+                    this.Log.Info($"{LogTag} [UNLOAD-5] Disposing Database connection...");
+                    this._database.Dispose();
+                    this.Log.Info($"{LogTag} Database connection disposed ✓");
+                }
+
+                this.Log.Info($"{LogTag} ========================================");
+                this.Log.Info($"{LogTag} Plugin unloaded successfully ✓");
+                this.Log.Info($"{LogTag} ========================================");
             }
             catch (Exception ex)
             {
-                this.Log.Error($"{LogTag} ERROR during plugin unload: {ex.Message}");
+                this.Log.Error($"{LogTag} ❌ ERROR during plugin unload: {ex.Message}");
+                this.Log.Error($"{LogTag} Stack trace: {ex.StackTrace}");
             }
         }
 
         /// <summary>
-        /// Called when the application exits.
+        /// Called when a command is executed.
         /// </summary>
         public override void RunCommand(string commandName, string parameter)
         {
@@ -122,29 +187,12 @@ namespace Loupedeck.LogitumAdaptiveRing
         }
 
         /// <summary>
-        /// Called when the plugin settings are updated.
-        /// </summary>
-        public override void ApplyApplicationResources(string name, string value)
-        {
-            try
-            {
-                this.Log.Info($"{LogTag} Resource updated: {name} = {value}");
-
-                // TODO: Phase 4 - Handle settings changes (learning enabled, thresholds, etc.)
-            }
-            catch (Exception ex)
-            {
-                this.Log.Error($"{LogTag} ERROR in ApplyApplicationResources: {ex.Message}");
-            }
-        }
-
-        /// <summary>
         /// Event handler for application/process changes.
         /// Called when the user switches to a different application.
         /// </summary>
         /// <param name="sender">The process monitor</param>
         /// <param name="info">Process information</param>
-        private void OnApplicationChanged(object sender, ProcessInfo info)
+        private async void OnApplicationChanged(object sender, ProcessInfo info)
         {
             try
             {
@@ -152,13 +200,68 @@ namespace Loupedeck.LogitumAdaptiveRing
                 this.Log.Info($"{LogTag}   Window: {info.WindowTitle}");
                 this.Log.Info($"{LogTag}   Path: {info.ExecutablePath}");
 
-                // TODO: Phase 3 - Query MCP Registry for this application
+                // Phase 3: Query MCP Registry for this application
+                var servers = await this.QueryMCPServersForAppAsync(info.ProcessName);
+
+                if (servers.Count > 0)
+                {
+                    this.Log.Info($"{LogTag} Found {servers.Count} MCP server(s) for {info.ProcessName}:");
+                    foreach (var server in servers)
+                    {
+                        this.Log.Info($"{LogTag}   - {server.Name} v{server.Version}: {server.Description}");
+                    }
+                }
+                else
+                {
+                    this.Log.Info($"{LogTag} No MCP servers found for {info.ProcessName}");
+                }
+
                 // TODO: Phase 4 - Request AI suggestions for this context
                 // TODO: Phase 5 - Update Actions Ring with available actions
             }
             catch (Exception ex)
             {
                 this.Log.Error($"{LogTag} ERROR in OnApplicationChanged: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Queries MCP servers for a given application, using cache when available.
+        /// </summary>
+        /// <param name="appName">Application process name.</param>
+        /// <returns>List of MCP servers for this application.</returns>
+        private async Task<List<MCPServer>> QueryMCPServersForAppAsync(string appName)
+        {
+            try
+            {
+                // Check cache first
+                var cached = this._database.GetCachedServers(appName);
+                if (cached.Count > 0)
+                {
+                    this.Log.Info($"{LogTag} Using cached MCP servers for {appName}");
+                    return cached;
+                }
+
+                // Query MCP Registry API
+                this.Log.Info($"{LogTag} Querying MCP Registry for {appName}...");
+                var servers = await this._mcpClient.SearchServersAsync(appName, limit: 5);
+
+                // Cache results
+                if (servers.Count > 0)
+                {
+                    foreach (var server in servers)
+                    {
+                        this._database.CacheMCPServer(appName, server);
+                    }
+                    this.Log.Info($"{LogTag} Cached {servers.Count} server(s) for {appName}");
+                }
+
+                return servers;
+            }
+            catch (Exception ex)
+            {
+                this.Log.Error($"{LogTag} ERROR querying MCP servers: {ex.Message}");
+                return new List<MCPServer>();
             }
         }
     }

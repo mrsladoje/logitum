@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>disable</Nullable>
     <RootNamespace>Loupedeck.LogitumAdaptiveRing</RootNamespace>
+    <AssemblyName>LogitumAdaptiveRingPlugin</AssemblyName>
 
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
@@ -25,7 +26,7 @@
     <OutputPath>$(BaseOutputPath)$(Configuration)\bin\</OutputPath>
 
     <!-- Plugin Short Name (used for reload command) -->
-    <PluginShortName>MCPAdaptiveRing</PluginShortName>
+    <PluginShortName>LogitumAdaptiveRing</PluginShortName>
 
     <!-- Metadata -->
     <Version>0.1.0</Version>
@@ -40,9 +41,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- NuGet Package References -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Reference to Logi Plugin API (only if it exists) -->
     <Reference Include="PluginApi" Condition="Exists('$(PluginApiDir)PluginApi.dll')">
       <HintPath>$(PluginApiDir)PluginApi.dll</HintPath>
+      <Private>False</Private>
     </Reference>
   </ItemGroup>
 
@@ -57,19 +64,18 @@
     <Message Condition="Exists('$(PluginApiDir)PluginApi.dll')" Text="✅ PluginApi.dll found - building REAL plugin" Importance="High" />
   </Target>
 
-  <!-- Copy package files after build -->
-  <Target Name="CopyPackage" AfterTargets="PostBuildEvent">
-    <Message Text="📦 Copying package files..." Importance="High" />
+  <!-- Copy metadata files after build -->
+  <Target Name="CopyMetadata" AfterTargets="PostBuildEvent">
+    <Message Text="📦 Copying metadata files..." Importance="High" />
     <ItemGroup>
-      <PackageFiles Include="package\**\*" />
+      <MetadataFiles Include="metadata\**\*" />
     </ItemGroup>
-    <Copy SourceFiles="@(PackageFiles)" DestinationFolder="$(OutputPath)..\%(RecursiveDir)" ContinueOnError="true" />
-    <Message Text="✅ Package files copied to $(OutputPath)..\" Importance="High" />
+    <Copy SourceFiles="@(MetadataFiles)" DestinationFiles="@(MetadataFiles->'$(BaseOutputPath)$(Configuration)\%(Identity)')" ContinueOnError="true" />
+    <Message Text="✅ Metadata files copied to $(BaseOutputPath)$(Configuration)\metadata\" Importance="High" />
   </Target>
-
   <!-- Create plugin link and reload -->
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Condition="$(OS) == 'Windows_NT'" Command="echo $(BaseOutputPath)$(Configuration)\ &gt; &quot;$(PluginDir)$(ProjectName).link&quot;" />
+    <Exec Condition="$(OS) == 'Windows_NT'" Command="echo $(BaseOutputPath)$(Configuration)\&gt; &quot;$(PluginDir)$(ProjectName).link&quot;" />
     <Exec Condition="$(OS) != 'Windows_NT'" Command="echo $(BaseOutputPath)$(Configuration)\ &gt; $(PluginDir)$(ProjectName).link" />
     <Message Text="🔨 Created plugin link at: $(PluginDir)$(ProjectName).link" Importance="High" />
 
