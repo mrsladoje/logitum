@@ -127,3 +127,6 @@ secrets.json
 # Temporary files
 *.tmp
 *.temp
+
+# Claude
+settings.local.json
