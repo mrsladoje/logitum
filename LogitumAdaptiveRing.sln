@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31919.166
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LogitumAdaptiveRing", "src\LogitumAdaptiveRing\LogitumAdaptiveRing.csproj", "{5A7C2B1D-4F8E-4D9C-8A1B-2C3D4E5F6A7B}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LogitumAdaptiveRing.TestConsole", "src\LogitumAdaptiveRing.TestConsole\LogitumAdaptiveRing.TestConsole.csproj", "{8B9C3D2E-5F6A-4E7B-9C8D-3E4F5A6B7C8D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,5 +17,9 @@ Global
 		{5A7C2B1D-4F8E-4D9C-8A1B-2C3D4E5F6A7B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5A7C2B1D-4F8E-4D9C-8A1B-2C3D4E5F6A7B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5A7C2B1D-4F8E-4D9C-8A1B-2C3D4E5F6A7B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8B9C3D2E-5F6A-4E7B-9C8D-3E4F5A6B7C8D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8B9C3D2E-5F6A-4E7B-9C8D-3E4F5A6B7C8D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8B9C3D2E-5F6A-4E7B-9C8D-3E4F5A6B7C8D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8B9C3D2E-5F6A-4E7B-9C8D-3E4F5A6B7C8D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
