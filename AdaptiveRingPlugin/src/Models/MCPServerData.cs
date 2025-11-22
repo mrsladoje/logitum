@@ -67,3 +67,25 @@ public class GlamaServer
     public string Description { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;
 }
+
+public class RememberedApp
+{
+    public required string AppName { get; set; }
+    public required string DisplayName { get; set; }
+    public string? McpServerName { get; set; }
+    public long CreatedAt { get; set; }
+    public long LastSeenAt { get; set; }
+}
+
+public enum ActionType { Prompt, Keybind, Python }
+
+public class AppAction
+{
+    public int Id { get; set; }
+    public required string AppName { get; set; }
+    public int Position { get; set; } // 0-7
+    public ActionType Type { get; set; }
+    public required string ActionName { get; set; }
+    public required string ActionDataJson { get; set; } // Serialized action data
+    public bool Enabled { get; set; } = true;
+}

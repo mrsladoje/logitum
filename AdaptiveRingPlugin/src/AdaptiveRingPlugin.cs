@@ -11,6 +11,10 @@ namespace Loupedeck.AdaptiveRingPlugin
         private ProcessMonitor _processMonitor = null!;
         private AppDatabase _database = null!;
         private MCPRegistryClient _mcpClient = null!;
+        private ActionPersistenceService _persistenceService = null!;
+        private GeminiActionSuggestor _geminiSuggestor = null!;
+        
+        public ActionsRingManager ActionsRingManager { get; private set; } = null!;
 
         // Gets a value indicating whether this is an API-only plugin.
         public override Boolean UsesApplicationApiOnly => true;
@@ -60,12 +64,28 @@ namespace Loupedeck.AdaptiveRingPlugin
             // Download ToolSDK index asynchronously (don't block plugin loading)
             _ = InitializeToolSDKIndexAsync();
 
-            // Initialize the process monitor
-            _processMonitor = new ProcessMonitor();
-            _processMonitor.AppSwitched += OnAppSwitched;
+            // Initialize Gemini Action Suggestor
+            _geminiSuggestor = new GeminiActionSuggestor();
+            PluginLog.Info("✅ Gemini Action Suggestor initialized");
+
+            // Initialize Persistence Service
+            _persistenceService = new ActionPersistenceService(_database);
+            PluginLog.Info("✅ Action Persistence Service initialized");
+
+            // Initialize Actions Ring Manager
+            ActionsRingManager = new ActionsRingManager(_persistenceService, this);
+            PluginLog.Info("✅ Actions Ring Manager initialized");
+
+            // Initialize the process monitor with all services
+            _processMonitor = new ProcessMonitor(
+                _persistenceService,
+                ActionsRingManager,
+                _geminiSuggestor,
+                _mcpClient
+            );
             _processMonitor.Start();
 
-            PluginLog.Info("✅ ProcessMonitor started successfully");
+            PluginLog.Info("✅ ProcessMonitor started successfully with persistence workflow");
             PluginLog.Info("🚀 AdaptiveRing Plugin is now active!");
         }
 
@@ -77,7 +97,6 @@ namespace Loupedeck.AdaptiveRingPlugin
             // Stop and dispose the process monitor
             if (_processMonitor != null)
             {
-                _processMonitor.AppSwitched -= OnAppSwitched;
                 _processMonitor.Stop();
                 _processMonitor.Dispose();
                 _processMonitor = null!;
@@ -102,48 +121,6 @@ namespace Loupedeck.AdaptiveRingPlugin
             catch (Exception ex)
             {
                 PluginLog.Error($"Failed to initialize ToolSDK index: {ex.Message}");
-            }
-        }
-
-        private async void OnAppSwitched(object? sender, AppSwitchedEventArgs e)
-        {
-            PluginLog.Info($"📱 App Switch Detected: {e.ProcessName}");
-            PluginLog.Info($"   Window: {e.WindowTitle}");
-            PluginLog.Info($"   PID: {e.ProcessId}");
-
-            try
-            {
-                // Query MCP registries for this app
-                var mcpServer = await _mcpClient.FindServerAsync(e.ProcessName);
-
-                if (mcpServer != null)
-                {
-                    PluginLog.Info($"✅ MCP Server Found!");
-                    PluginLog.Info($"   Name: {mcpServer.ServerName}");
-                    PluginLog.Info($"   Package: {mcpServer.PackageName}");
-                    PluginLog.Info($"   Registry: {mcpServer.RegistrySource}");
-                    PluginLog.Info($"   Category: {mcpServer.Category}");
-                    PluginLog.Info($"   Validated: {mcpServer.Validated}");
-
-                    if (mcpServer.Tools != null && mcpServer.Tools.Count > 0)
-                    {
-                        PluginLog.Info($"   Tools: {mcpServer.Tools.Count} available");
-                        foreach (var tool in mcpServer.Tools.Take(5))
-                        {
-                            PluginLog.Info($"     - {tool.Key}: {tool.Value.Description}");
-                        }
-                    }
-
-                    // TODO: Update Actions Ring with MCP tools
-                }
-                else
-                {
-                    PluginLog.Info($"❌ No MCP server found for {e.ProcessName}");
-                }
-            }
-            catch (Exception ex)
-            {
-                PluginLog.Error($"Error querying MCP registries: {ex.Message}");
             }
         }
     }
