@@ -220,6 +220,11 @@ dotnet build -c Release
 
 ---
 
+## 🎥 Demo
+[![image](https://github.com/user-attachments/assets/6c0e57cf-7e25-4b89-99f5-8502925e39d4)](https://www.youtube.com/watch?v=5bFkX00qs2A)
+
+---
+
 ## 🧪 Development
 
 ### Project Structure
