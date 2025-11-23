@@ -360,7 +360,7 @@ public class AppDatabase : IDisposable
         await deleteCmd.ExecuteNonQueryAsync();
 
         // Insert all 8 actions
-        foreach (var action in actions)
+        foreach (var action in actions) 
         {
             // Skip empty/disabled actions if desired, or save all
             var insertCmd = _connection.CreateCommand();
