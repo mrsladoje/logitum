@@ -145,7 +145,7 @@ New MCP server published tomorrow? **You get it automatically.** No plugin updat
 │  TIER 3: ADAPTATION (Intelligent)                   │
 │  • Gemini AI interprets action sequences            │
 │  • VoyageAI embeddings cluster similar patterns     │
-│  • DBSCAN algorithm identifies workflows            │
+│  • clustering algorithm identifies workflows        │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -156,9 +156,9 @@ New MCP server published tomorrow? **You get it automatically.** No plugin updat
 | 🎮 **Plugin**      | Logitech Actions SDK (C#)   | Native hardware integration                 |
 | 🤖 **AI Brain**    | Google Gemini               | Workflow understanding & suggestions        |
 | 🧮 **Embeddings**  | VoyageAI (`voyage-code-3`)  | Semantic similarity detection               |
-| 📊 **Clustering**  | DBSCAN + Cosine Similarity  | Pattern recognition                         |
+| 📊 **Clustering**  | NN + Cosine Similarity      | Pattern recognition                         |
 | 👀 **UI Tracking** | Windows UI Automation       | Behavioral learning                         |
-| 🗄️ **Storage**     | SQLite + Milvus (vector DB) | Fast, local (if you set Milvus so), private |
+| 🗄️ **Storage**     | SQLite3                     | Fast, local, private                        |
 | 🌐 **Ecosystem**   | Model Context Protocol      | 6,000+ tools, one standard                  |
 
 ---
@@ -241,7 +241,7 @@ logitum/
 │   │   │   ├── UIInteractionMonitor.cs   # Behavior tracking
 │   │   │   ├── SemanticWorkflowProcessor.cs  # Pattern analysis
 │   │   │   ├── VoyageAIClient.cs         # Embeddings
-│   │   │   ├── VectorClusteringService.cs    # DBSCAN
+│   │   │   ├── VectorClusteringService.cs    # Neighrest Neighbour Clustering
 │   │   │   └── ActionRankingService.cs   # Smart sorting
 │   │   ├── Models/               # Data structures
 │   │   ├── Helpers/              # Utilities
@@ -335,7 +335,7 @@ Only sent to **Gemini** (workflow interpretation) and **VoyageAI** (embeddings).
 - [x] Windows UI Automation tracking
 - [x] Vector embedding clustering
 - [x] Adaptive action learning
-- [x] SQLite + Milvus storage
+- [x] SQLite3 with Vector Embeddings
 
 ### 🚧 In Progress
 
