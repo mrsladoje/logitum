@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Loupedeck.AdaptiveRingPlugin.Models;
 using Loupedeck.AdaptiveRingPlugin.Models.ActionData;
+using Loupedeck.AdaptiveRingPlugin.Helpers;
 
 public class GeminiActionSuggestor
 {
@@ -161,7 +162,7 @@ public class GeminiActionSuggestor
                 var keybindData = new KeybindActionData
                 {
                     Keys = geminiAction.ActionData.Keys ?? new List<string> { "Ctrl", "C" },
-                    Description = geminiAction.ActionData.Description
+                    Description = ActionNameSanitizer.Sanitize(geminiAction.ActionData.Description)
                 };
                 actionDataJson = JsonSerializer.Serialize(keybindData);
                 break;
@@ -172,7 +173,7 @@ public class GeminiActionSuggestor
                     McpServerName = geminiAction.ActionData.McpServerName ?? "",
                     ToolName = geminiAction.ActionData.ToolName ?? "",
                     Parameters = geminiAction.ActionData.Parameters,
-                    Description = geminiAction.ActionData.Description
+                    Description = ActionNameSanitizer.Sanitize(geminiAction.ActionData.Description)
                 };
                 actionDataJson = JsonSerializer.Serialize(promptData);
                 break;
@@ -183,7 +184,7 @@ public class GeminiActionSuggestor
                     ScriptCode = geminiAction.ActionData.ScriptCode,
                     ScriptPath = geminiAction.ActionData.ScriptPath,
                     Arguments = geminiAction.ActionData.Arguments,
-                    Description = geminiAction.ActionData.Description
+                    Description = ActionNameSanitizer.Sanitize(geminiAction.ActionData.Description)
                 };
                 actionDataJson = JsonSerializer.Serialize(pythonData);
                 break;
@@ -197,7 +198,7 @@ public class GeminiActionSuggestor
             AppName = appName,
             Position = geminiAction.Position,
             Type = actionType,
-            ActionName = geminiAction.ActionName,
+            ActionName = ActionNameSanitizer.Sanitize(geminiAction.ActionName),
             ActionDataJson = actionDataJson,
             Enabled = true
         };
@@ -264,4 +265,5 @@ public class GeminiActionSuggestor
         public List<string>? Arguments { get; set; }
         public string? Description { get; set; }
     }
+
 }

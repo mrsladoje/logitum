@@ -67,15 +67,7 @@ namespace Loupedeck.AdaptiveRingPlugin.Actions
                 return $"Action {_position + 1}";
             }
 
-            var typeIcon = action.Type switch
-            {
-                ActionType.Keybind => "⌨️",
-                ActionType.Prompt => "🤖",
-                ActionType.Python => "🐍",
-                _ => "❓"
-            };
-
-            return $"{typeIcon} {action.ActionName}";
+            return action.ActionName;
         }
 
         protected override void RunCommand(String actionParameter)

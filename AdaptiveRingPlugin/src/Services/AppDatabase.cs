@@ -319,7 +319,7 @@ public class AppDatabase : IDisposable
                 AppName = appNameValue,
                 Position = reader.GetInt32(2),
                 Type = Enum.TryParse<ActionType>(actionTypeStr, out var actionType) ? actionType : ActionType.Prompt,
-                ActionName = actionNameValue,
+                ActionName = Helpers.ActionNameSanitizer.Sanitize(actionNameValue),
                 ActionDataJson = actionDataValue,
                 Enabled = reader.GetInt32(6) == 1
             });
