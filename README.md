@@ -9,7 +9,6 @@
 [![Made for Logitech](https://img.shields.io/badge/Made%20for-Logitech-00B8FC?style=for-the-badge&logo=logitech&logoColor=white)](https://logitech.com)
 [![HackaTUM 2025](https://img.shields.io/badge/HackaTUM-2025-FF6B35?style=for-the-badge&logo=hack-the-box&logoColor=white)](https://hack.tum.de/)
 [![Built with MCP](https://img.shields.io/badge/MCP-Powered-7C3AED?style=for-the-badge&logo=protocol&logoColor=white)](https://modelcontextprotocol.io)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
 <img src="https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square&logo=dotnet&logoColor=white" />
 <img src="https://img.shields.io/badge/C%23-12.0-239120?style=flat-square&logo=csharp&logoColor=white" />
