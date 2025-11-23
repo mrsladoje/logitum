@@ -1,239 +1,116 @@
-# MCP Adaptive Ring - Implementation Log
+# Logitum Adaptive Ring Plugin
 
-**Project**: Logitum - MCP Adaptive Ring for Logitech MX Devices
-**Date Started**: November 22, 2025
-**Team**: SlothLite Development Team
-**Hackathon**: HackaTUM 2025
+Logi Plugin SDK plugin for adaptive ring functionality on Logitech devices with MCP (Model Context Protocol) integration.
 
----
+## Features
 
-## Milestone 1: Real Logitech Plugin Structure ✅ COMPLETE
+- **Multi-Registry MCP Support**: Queries 3 major MCP registries (ToolSDK, Official, Glama) with 4500+ total servers
+- **Smart Server Selection**: Intelligent ranking system selects the most general/relevant MCP server when multiple matches exist
+- **Smart Caching**: Local SQLite database caches registry queries for instant lookups
+- **Process Monitoring**: Detects app switches and automatically queries for relevant MCP servers
+- **Massive Coverage**: Supports developer tools, enterprise apps, databases, cloud platforms, and more
+- **Zero Build Warnings**: Fully nullable reference type compliant
 
-### Overview
-Establish a REAL Logitech Actions SDK plugin using the official Logi Plugin Tool and structure.
+## Structure
 
-### Test Result
-**Status**: ✅ **BUILD SUCCEEDED (Development Mode)**
-- **Build Output**: 0 errors, 1 warning (expected - Options+ not installed)
-- **DLL Generated**: `bin\Debug\bin\LogitumAdaptiveRing.dll`
-- **Plugin Link Created**: `%LOCALAPPDATA%\Logi\LogiPluginService\Plugins\LogitumAdaptiveRing.link`
-- **Build Time**: 2.85 seconds
-- **Date**: November 22, 2025 @ 04:00
-- **SDK Tool**: LogiPluginTool v6.1.4.22672 installed globally
+- `AdaptiveRingPlugin/` - Main plugin implementation
+  - `src/Models/` - Data models for MCP servers
+  - `src/Services/` - Core services (Database, Registry Client, Process Monitor)
+- `ReferencePlugin/` - Example reference plugin
 
-### Deliverables
+## Development
 
-#### ✅ Project Structure Created
-```
-logitum/
-├── PLAN.md (existing)
-├── CLAUDE.md (this file)
-├── LogitumAdaptiveRing.sln
-└── src/LogitumAdaptiveRing/
-    ├── LogitumAdaptiveRing.csproj
-    ├── AdaptiveRingPlugin.cs
-    ├── PluginManifest.json
-    └── Properties/
-        └── AssemblyInfo.cs
+Build (run from `AdaptiveRingPlugin/src/` directory to avoid duplicate assembly errors):
+```bash
+cd AdaptiveRingPlugin/src
+dotnet build
 ```
 
-#### ✅ Core Files
-
-**1. `LogitumAdaptiveRing.csproj`**
-- Target: .NET 6.0 Windows
-- Includes Logitech SDK reference
-- Configured for x64 platform
-- Post-build task copies PluginManifest.json to output
-
-**2. `AdaptiveRingPlugin.cs`**
-- Implements `ILogiPlugin` interface
-- `Initialize()` - Called on plugin load
-- `Shutdown()` - Called on plugin unload
-- `OnPluginEvent()` - Event handler for plugin events
-- `GetDeviceType()` - Declares MX device support
-- Debug logging for all operations
-- TODO comments for Phases 2-4
-
-**3. `PluginManifest.json`**
-- Plugin metadata (name, version, author)
-- Settings schema (learning, frequency, threshold)
-- Capabilities declaration
-- External service references (MCP Registry, Claude API, OpenAI)
-
-**4. `Stubs/PluginStubs.cs`** ⭐ NEW
-- Development stub classes for Plugin, PluginLogger, ClientApplication
-- Allows compilation WITHOUT Logitech Options+ installed
-- Auto-excluded when real PluginApi.dll is found
-- Conditional compilation using `#if NO_PLUGIN_API`
-
-**5. `LogitumAdaptiveRing.sln`**
-- Visual Studio solution file
-- AnyCPU configuration (modern .NET SDK style)
-
-### Issues Encountered & Resolved
-
-**Issue #1: Build Skipped - Platform Mismatch**
-- **Problem**: Solution configured for `x64`, but modern .NET SDK uses `AnyCPU`
-- **Solution**: Changed `.sln` configurations from `Debug|x64` to `Debug|Any CPU`
-- **File**: `LogitumAdaptiveRing.sln`
-
-**Issue #2: NuGet Package Version Not Found**
-- **Problem**: `System.Windows.Forms` version `4.7.0` doesn't exist
-- **Solution**: Removed package reference (built-in to `net6.0-windows`)
-- **File**: `LogitumAdaptiveRing.csproj`
-
-**Issue #3: Duplicate Assembly Attributes (7 errors)**
-- **Problem**: Modern .NET auto-generates AssemblyInfo, conflicted with manual file
-- **Solution**: Deleted `Properties\AssemblyInfo.cs` (now generated from `.csproj`)
-- **File**: Deleted `Properties\AssemblyInfo.cs`
-
-**Issue #4: No Official SDK Download Link**
-- **Problem**: GitHub repo had no releases, no DLL files to download
-- **Solution**: Discovered SDK is distributed as .NET tool via NuGet
-- **Command**: `dotnet tool install --global LogiPluginTool`
-- **Result**: Tool installed successfully (v6.1.4.22672)
-
-**Issue #5: Logitech Options+ Not Installed**
-- **Problem**: PluginApi.dll not found (Options+ not installed)
-- **Solution**: Created stub classes to allow development without SDK
-- **Implementation**: Conditional compilation with `#if NO_PLUGIN_API`
-- **Benefit**: Can develop and test plugin structure immediately
-
-### SDK Integration Status
-
-**Current State**: Development Mode with Stub Classes ✅
-- `.csproj` conditionally includes stub classes when PluginApi.dll not found
-- `AdaptiveRingPlugin.cs` inherits from `Plugin` base class (works with both real and stub)
-- Plugin compiles and builds successfully
-- Ready for real SDK integration
-
-**Two Modes**:
-1. **Development Mode** (current): Uses stub classes, no Options+ required
-2. **Production Mode** (after Options+ install): Uses real PluginApi.dll automatically
-
-**Next Step**: Install Logitech Options+ to switch to Production Mode
-- Download: `C:\Users\panonit\Downloads\logioptionsplus_installer.exe` (already downloaded)
-- Run installer manually (double-click)
-- After install, rebuild → will auto-use real SDK
-
----
-
-## Milestone 2: Process Monitor (Planned)
-
-**Goal**: Detect app switches via Windows Process APIs
-**Key Files**: `ProcessMonitor.cs`, `AppContextManager.cs`
-**Timeline**: After Milestone 1 approval
-
----
-
-## Milestone 3: MCP Registry Integration (Planned)
-
-**Goal**: Query MCP Registry API and parse server data
-**Key Files**: `MCPRegistryClient.cs`, `MCPServer.cs`
-**Timeline**: After Milestone 2 approval
-
----
-
-## Milestone 4: AI Workflow Suggestions (Planned)
-
-**Goal**: Claude API integration for action suggestions
-**Key Files**: `AIActionSuggester.cs`, `ClaudeClient.cs`
-**Timeline**: After Milestone 3 approval
-
----
-
-## Milestone 5: Actions Ring Control (Planned)
-
-**Goal**: Populate Actions Ring with suggested actions
-**Key Files**: `ActionsRingController.cs`, `ActionItem.cs`
-**Timeline**: After Milestone 4 approval
-
----
-
-## Build & Deployment Notes
-
-### SDK Path Configuration
-If the Logitech SDK is installed in a different location, update the `HintPath` in `LogitumAdaptiveRing.csproj`:
-
-```xml
-<Reference Include="LogiSDK">
-  <HintPath>PATH_TO_YOUR_SDK\logi_sdk_actions\libs\csharp\LogiSDK.dll</HintPath>
-</Reference>
+Or specify the full path:
+```bash
+dotnet build AdaptiveRingPlugin/src/AdaptiveRingPlugin.csproj
 ```
 
-### Plugin Installation Path
-After building, copy the DLL and manifest to:
-```
-%LOCALAPPDATA%\Logitech\LogiOptionsPlus\plugins\
-```
-
-Or use:
-```powershell
-$PluginDir = "$env:LOCALAPPDATA\Logitech\LogiOptionsPlus\plugins\"
-Copy-Item "bin\Debug\net6.0\*.dll" $PluginDir
-Copy-Item "src\LogitumAdaptiveRing\PluginManifest.json" $PluginDir
+Clean:
+```bash
+cd AdaptiveRingPlugin/src
+dotnet clean
 ```
 
-### Debugging
-Enable Debug Output in Visual Studio:
-- Debug → Windows → Output
-- Filter for "[MCP-AdaptiveRing]" prefix
+## Implementation Details
 
----
+### MCP Registry Integration
 
-## Architecture Overview
+The plugin queries 3 MCP registries in cascading order:
 
-```
-Phase 1 (NOW):     Plugin loads in Logitech Options+
-                   ↓
-Phase 2:           Detect active app via Windows APIs
-                   ↓
-Phase 3:           Query MCP Registry for servers
-                   ↓
-Phase 4:           Call Claude API for suggestions
-                   ↓
-Phase 5:           Update Actions Ring with results
-                   ↓
-Phase 6:           Track UI events (Windows UI Automation)
-                   ↓
-Phase 7:           Store & cluster semantic actions
-                   ↓
-Phase 8:           Suggest new actions based on patterns
-```
+1. **ToolSDK** (4109+ servers) - Local index downloaded on first run
+   - API: `https://toolsdk-ai.github.io/toolsdk-mcp-registry/indexes/packages-list.json`
+   - Cached locally for 7 days
+   - Returns up to 10 matches for ranking
 
----
+2. **Official MCP Registry** (380+ servers)
+   - API: `https://registry.modelcontextprotocol.io/v0/servers`
+   - Real-time search API
+   - Collects all matches across search variants
+
+3. **Glama** (aggregated sources)
+   - API: `https://glama.ai/api/mcp/v1/servers`
+   - Community-driven registry
+   - Aggregates matches from multiple search terms
+
+### Smart Server Selection
+
+When multiple MCP servers match a query, the system ranks them by generality:
+
+**Scoring Algorithm:**
+- Exact match: +1000 points (e.g., "vscode" matches "vscode")
+- Starts with search term: +700 points (e.g., "vscode-extension")
+- Ends with search term: +600 points (e.g., "microsoft-vscode")
+- Contains search term: +300 points
+- Validated package: +200 points
+- Feature-specific keywords: -200 points per keyword (api, extension, plugin, manager, etc.)
+- Extra words after search term: -50 points per word
+- Length penalty: -2 points per character over 8
+- Special characters: -10 points each (-, _, .)
+- Version suffixes: -50 points
+
+**Example:** For "chrome", the system prefers "chrome" over "chrome-google-search-api" or "puppeteer-chrome-extension"
+
+### Database Schema
+
+SQLite database at: `C:\Users\panonit\AppData\Local\Logitum\adaptive_ring.db`
+
+**Tables:**
+- `mcp_cache` - Caches MCP lookup results (7-day TTL)
+- `toolsdk_index` - Local copy of ToolSDK registry
+
+### Key Files
+
+- `AdaptiveRingPlugin.cs` - Main plugin logic with MCP integration
+- `Services/ProcessMonitor.cs` - Detects app switches using Win32 API
+- `Services/AppDatabase.cs` - SQLite database with caching and indexing
+- `Services/MCPRegistryClient.cs` - Multi-registry query client with smart ranking
+- `Models/MCPServerData.cs` - Data models for MCP servers
+- `Helpers/PluginLog.cs` - Logging helper (nullable-compliant)
+- `Helpers/PluginResources.cs` - Resource management helper
+- `package/plugin.json` - Plugin metadata
+
+### Code Quality
+
+- **Nullable Reference Types**: Enabled and fully compliant (0 warnings)
+- **Build Status**: Clean build with 0 warnings, 0 errors
+- **C# Version**: .NET 8.0 with implicit usings
+
+## Deployment
+
+Plugin deployed to: `C:\Users\panonit\AppData\Local\Logi\LogiPluginService\Plugins`
+
+## Logs
+
+Plugin logs available at: `C:\Users\panonit\AppData\Local\Logi\LogiPluginService\Logs\plugin_logs\AdaptiveRing.log`
 
 ## Next Steps
 
-1. ✅ **Milestone 1 Complete** - Base project builds successfully
-2. 🎯 **Ready for Milestone 2** - Implement ProcessMonitor
-   - Use `System.Diagnostics.Process` to track active window
-   - Use Win32 API `GetForegroundWindow()` to detect app switches
-   - Detect process name and executable path
-   - Log app names for verification
-   - **Deliverable**: Console app that prints active app every 2 seconds
-3. 🔲 **Milestone 3** - MCP Registry integration
-4. 🔲 **Milestone 4** - Claude API for suggestions
-5. 🔲 **Milestone 5** - Actions Ring population
-6. 🔲 **Milestone 6** - UI Automation tracking
-7. 🔲 **Milestone 7** - Semantic action clustering
-8. 🔲 **Milestone 8** - Adaptive suggestions
-
----
-
-## Known Issues / To-Do
-
-- [x] ~~Fix platform mismatch (x64 vs AnyCPU)~~ - RESOLVED
-- [x] ~~Fix NuGet package version error~~ - RESOLVED
-- [x] ~~Fix duplicate assembly attributes~~ - RESOLVED
-- [ ] Download and integrate Logitech Actions SDK
-- [ ] Verify Logitech Options+ loads plugin in dev mode
-- [ ] Create icon for PluginManifest.json (adaptive-ring-icon.png)
-
----
-
-**Last Updated**: November 22, 2025 @ 04:01
-**Current Phase**: Milestone 1 - COMPLETE ✅ (with Development Stubs)
-**Plugin Status**: Compiles and builds successfully in Development Mode
-**Ready for Phase 2**: YES - Process Monitor implementation
-**Logitech Options+ Status**: Not installed (optional for development)
+- Update Actions Ring with discovered MCP tools
+- Implement AI-suggested workflow actions
+- Add user preference learning

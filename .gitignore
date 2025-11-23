@@ -1,45 +1,36 @@
-# ===================================================================
-# Logitum MCP Adaptive Ring - Git Ignore Configuration
-# ===================================================================
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
 
-## Build Outputs
-bin/
-obj/
-*.dll
-*.exe
-*.pdb
-*.user
-*.suo
-*.cache
-
-## Visual Studio
+# Visual Studio cache/options
 .vs/
-*.sln.docstates
-*.userprefs
-*.pidb
-*.booproj
-*.svd
 *.suo
 *.user
 *.userosscache
 *.sln.docstates
-.vscode/settings.json
-.vscode/tasks.json
-.vscode/launch.json
 
-## User-specific settings
-**/settings.local.json
-*.local.json
+# Visual Studio Code
+.vscode/
 
-## NuGet
-packages/
-*.nupkg
-*.snupkg
-project.lock.json
-project.fragment.lock.json
-artifacts/
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
 
-## Build Results
+# Build results
 [Dd]ebug/
 [Dd]ebugPublic/
 [Rr]elease/
@@ -55,108 +46,89 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
-## .NET Core
+# Visual Studio profiler
+*.psess
+*.vsp
+*.vspx
+*.sap
+
+# ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# NuGet Packages
+*.nupkg
+*.snupkg
+**/packages/*
+!**/packages/build/
+*.nuget.props
+*.nuget.targets
+
+# NuGet Symbol Packages
+*.snupkg
+
+# MSTest test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# .NET Core
 project.lock.json
 project.fragment.lock.json
 artifacts/
 
-## StyleCop
-StyleCopReport.xml
+# Rider
+.idea/
 
-## Files built by Visual Studio
-*_i.c
-*_p.c
-*_h.h
-*.ilk
-*.meta
-*.obj
-*.iobj
-*.pch
-*.ipdb
-*.pgc
-*.pgd
-*.rsp
-*.sbr
-*.tlb
-*.tli
-*.tlh
-*.tmp
-*.tmp_proj
-*_wpftmp.csproj
-*.log
-*.vspscc
-*.vssscc
-.builds
-*.pidb
-*.svclog
-*.scc
+# User-specific files
+*.userprefs
 
-## Test Results
-[Tt]est[Rr]esult*/
-[Bb]uild[Ll]og.*
-*.VisualState.xml
-TestResult.xml
-[Dd]ebugPS/
-[Rr]eleasePS/
-dlldata.c
+# Mono auto generated files
+mono_crash.*
 
-## Database
+# Windows image file caches
+Thumbs.db
+ehthumbs.db
+
+# Folder config file
+Desktop.ini
+
+# Recycle Bin
+$RECYCLE.BIN/
+
+# VS Code directories
+.vscode/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# SQLite databases (development)
 *.db
-*.db-shm
-*.db-wal
 *.sqlite
 *.sqlite3
 
-## Temporary files
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.local
+
+# API keys and secrets
+appsettings.Development.json
+secrets.json
+
+# Temporary files
 *.tmp
 *.temp
-*.bak
-*.swp
-*~
 
-## OS Files
-.DS_Store
-Thumbs.db
-Desktop.ini
-
-## IDE
-.idea/
-*.iml
-*.iws
-.vscode/
-.vs/
-
-## Python (for MCP tools)
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-ENV/
-
-## Node.js (for potential MCP servers)
-node_modules/
-npm-debug.log
-yarn-error.log
-
-## Logs
-*.log
-logs/
-
-## API Keys and Secrets
-*.env
-.env.local
-.env.*.local
-secrets.json
-appsettings.local.json
+# Claude
 settings.local.json
 
-## Downloaded Installers
-*.msi
-*_installer.exe
-
-## Keep
-!.gitignore
-!.gitkeep
+nul
