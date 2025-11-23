@@ -81,31 +81,70 @@ namespace Loupedeck.AdaptiveRingPlugin.Actions
             {
                 PluginLog.Info($"Executing action {_position}: {action.ActionName} (Type: {action.Type})");
 
+                // Execute the action based on type
+                var executionSuccessful = false;
+
                 switch (action.Type)
                 {
                     case ActionType.Keybind:
                         KeybindExecutor.Execute(action);
+                        executionSuccessful = true;
                         break;
 
                     case ActionType.Prompt:
                         if (_plugin != null)
                         {
                             (_plugin as AdaptiveRingPlugin)?.McpPromptExecutor?.Execute(action);
+                            executionSuccessful = true;
                         }
                         break;
 
                     case ActionType.Python:
                         PythonScriptExecutor.Execute(action);
+                        executionSuccessful = true;
                         break;
 
                     default:
                         PluginLog.Warning($"Unknown action type: {action.Type}");
                         break;
                 }
+
+                // Track usage after successful execution
+                if (executionSuccessful && action.Id > 0)
+                {
+                    TrackActionUsage(action.Id);
+                }
             }
             catch (Exception ex)
             {
                 PluginLog.Error($"Error executing action {_position}: {ex.Message}");
+            }
+        }
+
+        private void TrackActionUsage(int actionId)
+        {
+            try
+            {
+                // Access the ActionPersistenceService through the plugin
+                var persistenceService = (_plugin as AdaptiveRingPlugin)?.ActionPersistenceService;
+                if (persistenceService != null)
+                {
+                    // Use async method with GetAwaiter().GetResult() to avoid blocking
+                    Task.Run(async () =>
+                    {
+                        await persistenceService.TrackActionUsageAsync(actionId);
+                    });
+
+                    PluginLog.Info($"Tracked usage for action ID {actionId}");
+                }
+                else
+                {
+                    PluginLog.Warning("ActionPersistenceService not available for usage tracking");
+                }
+            }
+            catch (Exception ex)
+            {
+                PluginLog.Error($"Error tracking action usage: {ex.Message}");
             }
         }
     }

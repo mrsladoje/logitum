@@ -329,6 +329,153 @@ public class ActionPersistenceService
     }
 
     /// <summary>
+    /// Increment the usage count for an action.
+    /// </summary>
+    /// <param name="actionId">Action ID</param>
+    public async Task IncrementUsageCountAsync(int actionId)
+    {
+        if (actionId <= 0)
+        {
+            PluginLog.Warning($"Invalid actionId {actionId} for IncrementUsageCount");
+            return;
+        }
+
+        try
+        {
+            var connection = GetConnection();
+            var cmd = connection.CreateCommand();
+            cmd.CommandText = @"
+                UPDATE app_actions
+                SET usage_count = COALESCE(usage_count, 0) + 1
+                WHERE id = $actionId
+            ";
+            cmd.Parameters.AddWithValue("$actionId", actionId);
+
+            var rowsAffected = await cmd.ExecuteNonQueryAsync();
+
+            if (rowsAffected > 0)
+            {
+                PluginLog.Info($"Incremented usage count for action ID {actionId}");
+            }
+            else
+            {
+                PluginLog.Warning($"Action ID {actionId} not found for usage count increment");
+            }
+        }
+        catch (Exception ex)
+        {
+            PluginLog.Error($"Error incrementing usage count for action '{actionId}': {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Update the last used timestamp for an action.
+    /// </summary>
+    /// <param name="actionId">Action ID</param>
+    public async Task UpdateLastUsedAsync(int actionId)
+    {
+        if (actionId <= 0)
+        {
+            PluginLog.Warning($"Invalid actionId {actionId} for UpdateLastUsed");
+            return;
+        }
+
+        try
+        {
+            var connection = GetConnection();
+            var cmd = connection.CreateCommand();
+            cmd.CommandText = @"
+                UPDATE app_actions
+                SET last_used_at = $now
+                WHERE id = $actionId
+            ";
+            cmd.Parameters.AddWithValue("$actionId", actionId);
+            cmd.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+            var rowsAffected = await cmd.ExecuteNonQueryAsync();
+
+            if (rowsAffected > 0)
+            {
+                PluginLog.Info($"Updated last used timestamp for action ID {actionId}");
+            }
+            else
+            {
+                PluginLog.Warning($"Action ID {actionId} not found for last used update");
+            }
+        }
+        catch (Exception ex)
+        {
+            PluginLog.Error($"Error updating last used for action '{actionId}': {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Increment usage count and update last used timestamp in a single operation.
+    /// </summary>
+    /// <param name="actionId">Action ID</param>
+    public async Task TrackActionUsageAsync(int actionId)
+    {
+        if (actionId <= 0)
+        {
+            PluginLog.Warning($"Invalid actionId {actionId} for TrackActionUsage");
+            return;
+        }
+
+        try
+        {
+            var connection = GetConnection();
+            var cmd = connection.CreateCommand();
+            cmd.CommandText = @"
+                UPDATE app_actions
+                SET usage_count = COALESCE(usage_count, 0) + 1,
+                    last_used_at = $now
+                WHERE id = $actionId
+            ";
+            cmd.Parameters.AddWithValue("$actionId", actionId);
+            cmd.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+            var rowsAffected = await cmd.ExecuteNonQueryAsync();
+
+            if (rowsAffected > 0)
+            {
+                PluginLog.Info($"Tracked usage for action ID {actionId}");
+            }
+            else
+            {
+                PluginLog.Warning($"Action ID {actionId} not found for usage tracking");
+            }
+        }
+        catch (Exception ex)
+        {
+            PluginLog.Error($"Error tracking usage for action '{actionId}': {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Synchronous wrapper for IncrementUsageCountAsync.
+    /// </summary>
+    public void IncrementUsageCount(int actionId)
+    {
+        IncrementUsageCountAsync(actionId).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Synchronous wrapper for UpdateLastUsedAsync.
+    /// </summary>
+    public void UpdateLastUsed(int actionId)
+    {
+        UpdateLastUsedAsync(actionId).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Synchronous wrapper for TrackActionUsageAsync.
+    /// </summary>
+    public void TrackActionUsage(int actionId)
+    {
+        TrackActionUsageAsync(actionId).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
     /// Helper method to get the connection from AppDatabase using reflection.
     /// This is necessary because the connection is private in AppDatabase.
     /// </summary>

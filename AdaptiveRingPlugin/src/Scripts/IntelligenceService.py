@@ -139,7 +139,7 @@ def orchestrate(tools_json: str, prompt: str, api_key: str):
         return
 
     tools_desc = "\n".join([f"- {t.get('Name', 'Unknown')}: {t.get('Description', 'No description')}" for t in tools])
-    
+
     full_prompt = f"""You have access to the following tools:
 
 {tools_desc}
@@ -158,32 +158,118 @@ If no tool is appropriate, respond with: {{"tool": "none"}}"""
         log(f"Orchestrating request: {prompt}")
         response = model.generate_content(full_prompt)
         text = response.text.strip()
-        
+
         if text.startswith("```json"): text = text[7:]
         elif text.startswith("```"): text = text[3:]
         if text.endswith("```"): text = text[:-3]
         text = text.strip()
-        
+
         print(text)
     except Exception as e:
         log(f"Error in orchestration: {e}")
         print(json.dumps({"tool": "none", "error": str(e)}))
 
+def analyze_workflows(app_name: str, interactions_json: str, api_key: str):
+    """Analyze user interactions and identify semantic workflows"""
+    try:
+        interactions = json.loads(interactions_json)
+    except json.JSONDecodeError:
+        log("Failed to parse interactions JSON")
+        print(json.dumps([]))
+        return
+
+    if len(interactions) < 2:
+        log(f"Not enough interactions ({len(interactions)}) to identify workflows")
+        print(json.dumps([]))
+        return
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-2.5-flash')
+
+    # Format interactions for the prompt
+    interaction_list = []
+    for i in interactions:
+        interaction_list.append({
+            "id": i.get("id"),
+            "type": i.get("interaction_type"),
+            "element": i.get("element_name", "unknown"),
+            "timestamp": i.get("timestamp")
+        })
+
+    prompt = f"""Analyze user interactions in {app_name} and identify semantic workflows.
+
+Rules:
+1. Add app-specific context (e.g., "chrome.exe: user logs in to gmail")
+2. Use present tense active voice ("opens file" not "opened file")
+3. Identify temporal sequences (min 2 related actions within 10 seconds)
+4. Be specific but generalizable
+5. Ignore isolated actions
+6. Only include workflows with confidence >= 0.8
+
+Input interactions:
+{json.dumps(interaction_list, indent=2)}
+
+Return ONLY a JSON array of workflows in this exact format (no markdown):
+[
+  {{
+    "workflow": "chrome.exe: user logs into gmail",
+    "interaction_ids": [1, 2, 3],
+    "confidence": 0.95
+  }}
+]
+
+If no workflows are found, return an empty array: []"""
+
+    try:
+        log(f"Analyzing {len(interactions)} interactions for {app_name}...")
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+
+        # Clean markdown if present
+        if text.startswith("```json"):
+            text = text[7:]
+        elif text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+
+        # Parse and validate
+        workflows = json.loads(text)
+
+        if not isinstance(workflows, list):
+            log("Response is not a list, returning empty array")
+            print(json.dumps([]))
+            return
+
+        # Filter workflows by confidence
+        filtered_workflows = [w for w in workflows if w.get("confidence", 0) >= 0.8]
+
+        log(f"Found {len(filtered_workflows)} workflows with confidence >= 0.8")
+        print(json.dumps(filtered_workflows))
+
+    except Exception as e:
+        log(f"Error analyzing workflows: {str(e)}")
+        print(json.dumps([]))
+
 def main():
     parser = argparse.ArgumentParser(description='AdaptiveRing Intelligence Service')
-    parser.add_argument('--mode', choices=['suggest', 'orchestrate'], default='suggest', help='Operation mode')
-    
+    parser.add_argument('--mode', choices=['suggest', 'orchestrate', 'analyze-workflows'], default='suggest', help='Operation mode')
+
     # Suggest mode args
     parser.add_argument('--app', help='Application name')
     parser.add_argument('--mcp-servers', help='JSON string of available MCP servers', default='[]')
-    
+
     # Orchestrate mode args
     parser.add_argument('--tools', help='JSON string of available tools')
     parser.add_argument('--prompt', help='User prompt for orchestration')
-    
+
+    # Analyze workflows mode args
+    parser.add_argument('--interactions', help='JSON string of UI interactions')
+
     args = parser.parse_args()
     api_key = os.environ.get("GEMINI_API_KEY")
-    
+
     if not api_key:
         log("GEMINI_API_KEY not set.")
         if args.mode == 'suggest':
@@ -191,6 +277,8 @@ def main():
                 print(json.dumps(get_universal_defaults(args.app)))
             else:
                  print(json.dumps(get_universal_defaults("Default")))
+        elif args.mode == 'analyze-workflows':
+            print(json.dumps([]))
         else:
             print(json.dumps({"tool": "none", "error": "API key missing"}))
         return
@@ -200,13 +288,20 @@ def main():
             log("Error: --app required for suggest mode")
             return
         suggest_actions(args.app, args.mcp_servers, api_key)
-        
+
     elif args.mode == 'orchestrate':
         if not args.tools or not args.prompt:
             log("Error: --tools and --prompt required for orchestrate mode")
             print(json.dumps({"tool": "none"}))
             return
         orchestrate(args.tools, args.prompt, api_key)
+
+    elif args.mode == 'analyze-workflows':
+        if not args.app or not args.interactions:
+            log("Error: --app and --interactions required for analyze-workflows mode")
+            print(json.dumps([]))
+            return
+        analyze_workflows(args.app, args.interactions, api_key)
 
 if __name__ == "__main__":
     main()

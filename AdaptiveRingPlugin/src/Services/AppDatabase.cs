@@ -55,6 +55,8 @@ public class AppDatabase : IDisposable
                 action_name TEXT NOT NULL,
                 action_data TEXT NOT NULL,
                 enabled INTEGER NOT NULL DEFAULT 1,
+                usage_count INTEGER NOT NULL DEFAULT 0,
+                last_used_at INTEGER,
                 FOREIGN KEY (app_name) REFERENCES remembered_apps(app_name) ON DELETE CASCADE,
                 UNIQUE (app_name, position)
             );
@@ -67,11 +69,91 @@ public class AppDatabase : IDisposable
                 enabled INTEGER NOT NULL DEFAULT 1
             );
 
+            CREATE TABLE IF NOT EXISTS ui_interactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_name TEXT NOT NULL,
+                window_title TEXT,
+                interaction_type TEXT NOT NULL,
+                element_name TEXT,
+                simplified_description TEXT NOT NULL,
+                timestamp INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                FOREIGN KEY (app_name) REFERENCES remembered_apps(app_name) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS semantic_workflows (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_name TEXT NOT NULL,
+                workflow_text TEXT NOT NULL,
+                raw_interaction_ids TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                confidence REAL NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS workflow_embeddings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                workflow_id INTEGER NOT NULL,
+                app_name TEXT NOT NULL,
+                embedding BLOB NOT NULL,
+                cluster_id INTEGER,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (workflow_id) REFERENCES semantic_workflows(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS workflow_clusters (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_name TEXT NOT NULL,
+                cluster_label INTEGER NOT NULL,
+                representative_workflow_text TEXT NOT NULL,
+                workflow_count INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_cache_time ON mcp_cache(cached_at);
             CREATE INDEX IF NOT EXISTS idx_toolsdk_category ON toolsdk_index(category);
             CREATE INDEX IF NOT EXISTS idx_app_actions_app ON app_actions(app_name);
+            CREATE INDEX IF NOT EXISTS idx_ui_app_time ON ui_interactions(app_name, timestamp);
+            CREATE INDEX IF NOT EXISTS idx_ui_expires ON ui_interactions(expires_at);
+            CREATE INDEX IF NOT EXISTS idx_semantic_workflows_app ON semantic_workflows(app_name);
+            CREATE INDEX IF NOT EXISTS idx_workflow_embeddings_workflow ON workflow_embeddings(workflow_id);
+            CREATE INDEX IF NOT EXISTS idx_workflow_embeddings_cluster ON workflow_embeddings(cluster_id);
+            CREATE INDEX IF NOT EXISTS idx_workflow_clusters_app ON workflow_clusters(app_name);
         ";
         createTablesCmd.ExecuteNonQuery();
+
+        // Migrate existing app_actions table if needed
+        MigrateAppActionsTable();
+    }
+
+    private void MigrateAppActionsTable()
+    {
+        try
+        {
+            // Check if columns exist by attempting to query them
+            var checkCmd = _connection.CreateCommand();
+            checkCmd.CommandText = "SELECT usage_count, last_used_at FROM app_actions LIMIT 1";
+
+            try
+            {
+                checkCmd.ExecuteReader().Close();
+                // Columns already exist, no migration needed
+            }
+            catch
+            {
+                // Columns don't exist, add them
+                var alterCmd = _connection.CreateCommand();
+                alterCmd.CommandText = @"
+                    ALTER TABLE app_actions ADD COLUMN usage_count INTEGER NOT NULL DEFAULT 0;
+                    ALTER TABLE app_actions ADD COLUMN last_used_at INTEGER;
+                ";
+                alterCmd.ExecuteNonQuery();
+            }
+        }
+        catch
+        {
+            // Table might not exist yet or migration already done, ignore
+        }
     }
 
     public async Task<MCPServerData?> GetCachedAsync(string appName)
@@ -407,6 +489,280 @@ public class AppDatabase : IDisposable
         await deleteAppCmd.ExecuteNonQueryAsync();
 
         transaction.Commit();
+    }
+
+    // UI Interaction methods
+
+    public async Task SaveUIInteractionAsync(UIInteraction interaction)
+    {
+        var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO ui_interactions (app_name, window_title, interaction_type, element_name, simplified_description, timestamp, expires_at)
+            VALUES ($appName, $windowTitle, $interactionType, $elementName, $simplifiedDescription, $timestamp, $expiresAt)
+        ";
+        cmd.Parameters.AddWithValue("$appName", interaction.AppName.ToLowerInvariant());
+        cmd.Parameters.AddWithValue("$windowTitle", interaction.WindowTitle ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$interactionType", interaction.InteractionType);
+        cmd.Parameters.AddWithValue("$elementName", interaction.ElementName ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$simplifiedDescription", interaction.SimplifiedDescription);
+        cmd.Parameters.AddWithValue("$timestamp", interaction.Timestamp);
+        cmd.Parameters.AddWithValue("$expiresAt", interaction.ExpiresAt);
+
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task<List<UIInteraction>> GetRecentUIInteractionsAsync(string appName, int minutes)
+    {
+        var interactions = new List<UIInteraction>();
+        var cutoffTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - (minutes * 60);
+
+        var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            SELECT id, app_name, window_title, interaction_type, element_name, simplified_description, timestamp, expires_at
+            FROM ui_interactions
+            WHERE app_name = $appName
+            AND timestamp >= $cutoffTime
+            ORDER BY timestamp ASC
+        ";
+        cmd.Parameters.AddWithValue("$appName", appName.ToLowerInvariant());
+        cmd.Parameters.AddWithValue("$cutoffTime", cutoffTime);
+
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var appNameValue = reader.GetString(1);
+            var interactionTypeValue = reader.GetString(3);
+            var simplifiedDescriptionValue = reader.GetString(5);
+
+            interactions.Add(new UIInteraction
+            {
+                Id = reader.GetInt32(0),
+                AppName = appNameValue,
+                WindowTitle = reader.IsDBNull(2) ? null : reader.GetString(2),
+                InteractionType = interactionTypeValue,
+                ElementName = reader.IsDBNull(4) ? null : reader.GetString(4),
+                SimplifiedDescription = simplifiedDescriptionValue,
+                Timestamp = reader.GetInt64(6),
+                ExpiresAt = reader.GetInt64(7)
+            });
+        }
+
+        return interactions;
+    }
+
+    public async Task CleanupExpiredInteractionsAsync()
+    {
+        var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            DELETE FROM ui_interactions
+            WHERE expires_at < $currentTime
+        ";
+        cmd.Parameters.AddWithValue("$currentTime", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task CleanupExpiredUIInteractionsAsync()
+    {
+        await CleanupExpiredInteractionsAsync();
+    }
+
+    // Semantic Workflow methods
+
+    public async Task<int> SaveSemanticWorkflowAsync(SemanticWorkflow workflow)
+    {
+        var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO semantic_workflows (app_name, workflow_text, raw_interaction_ids, created_at, confidence)
+            VALUES ($appName, $workflowText, $rawInteractionIds, $createdAt, $confidence);
+            SELECT last_insert_rowid();
+        ";
+        cmd.Parameters.AddWithValue("$appName", workflow.AppName.ToLowerInvariant());
+        cmd.Parameters.AddWithValue("$workflowText", workflow.WorkflowText);
+        cmd.Parameters.AddWithValue("$rawInteractionIds", workflow.RawInteractionIds);
+        cmd.Parameters.AddWithValue("$createdAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        cmd.Parameters.AddWithValue("$confidence", workflow.Confidence);
+
+        var result = await cmd.ExecuteScalarAsync();
+        return Convert.ToInt32(result);
+    }
+
+    public async Task SaveWorkflowEmbeddingAsync(int workflowId, string appName, float[] embedding, int? clusterId)
+    {
+        var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO workflow_embeddings (workflow_id, app_name, embedding, cluster_id, created_at)
+            VALUES ($workflowId, $appName, $embedding, $clusterId, $createdAt)
+        ";
+        cmd.Parameters.AddWithValue("$workflowId", workflowId);
+        cmd.Parameters.AddWithValue("$appName", appName.ToLowerInvariant());
+
+        // Convert float array to byte array for BLOB storage
+        var embeddingBytes = new byte[embedding.Length * sizeof(float)];
+        Buffer.BlockCopy(embedding, 0, embeddingBytes, 0, embeddingBytes.Length);
+        cmd.Parameters.AddWithValue("$embedding", embeddingBytes);
+
+        cmd.Parameters.AddWithValue("$clusterId", clusterId.HasValue ? (object)clusterId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("$createdAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task<List<WorkflowCluster>> GetWorkflowClustersForAppAsync(string appName, int limit = 10)
+    {
+        var clusters = new List<WorkflowCluster>();
+
+        var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            SELECT id, app_name, cluster_label, representative_workflow_text, workflow_count, created_at, updated_at
+            FROM workflow_clusters
+            WHERE app_name = $appName
+            ORDER BY workflow_count DESC, updated_at DESC
+            LIMIT $limit
+        ";
+        cmd.Parameters.AddWithValue("$appName", appName.ToLowerInvariant());
+        cmd.Parameters.AddWithValue("$limit", limit);
+
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var appNameValue = reader.GetString(1);
+            var representativeWorkflowText = reader.GetString(3);
+
+            clusters.Add(new WorkflowCluster
+            {
+                Id = reader.GetInt32(0),
+                AppName = appNameValue,
+                ClusterLabel = reader.GetInt32(2),
+                RepresentativeWorkflowText = representativeWorkflowText,
+                WorkflowCount = reader.GetInt32(4),
+                CreatedAt = reader.GetInt64(5),
+                UpdatedAt = reader.GetInt64(6)
+            });
+        }
+
+        return clusters;
+    }
+
+    public async Task IncrementActionUsageAsync(int actionId)
+    {
+        var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE app_actions
+            SET usage_count = usage_count + 1,
+                last_used_at = $lastUsedAt
+            WHERE id = $actionId
+        ";
+        cmd.Parameters.AddWithValue("$actionId", actionId);
+        cmd.Parameters.AddWithValue("$lastUsedAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    // Workflow Cluster methods
+
+    public async Task SaveOrUpdateClusterAsync(WorkflowCluster cluster)
+    {
+        var cmd = _connection.CreateCommand();
+
+        // Check if cluster exists for this app and label
+        var existingCmd = _connection.CreateCommand();
+        existingCmd.CommandText = @"
+            SELECT id FROM workflow_clusters
+            WHERE app_name = $appName AND cluster_label = $clusterLabel
+        ";
+        existingCmd.Parameters.AddWithValue("$appName", cluster.AppName.ToLowerInvariant());
+        existingCmd.Parameters.AddWithValue("$clusterLabel", cluster.ClusterLabel);
+
+        var existingId = await existingCmd.ExecuteScalarAsync();
+
+        if (existingId != null)
+        {
+            // Update existing cluster
+            cmd.CommandText = @"
+                UPDATE workflow_clusters
+                SET representative_workflow_text = $representativeWorkflowText,
+                    workflow_count = $workflowCount,
+                    updated_at = $updatedAt
+                WHERE id = $id
+            ";
+            cmd.Parameters.AddWithValue("$id", existingId);
+            cmd.Parameters.AddWithValue("$representativeWorkflowText", cluster.RepresentativeWorkflowText);
+            cmd.Parameters.AddWithValue("$workflowCount", cluster.WorkflowCount);
+            cmd.Parameters.AddWithValue("$updatedAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        }
+        else
+        {
+            // Insert new cluster
+            cmd.CommandText = @"
+                INSERT INTO workflow_clusters (app_name, cluster_label, representative_workflow_text, workflow_count, created_at, updated_at)
+                VALUES ($appName, $clusterLabel, $representativeWorkflowText, $workflowCount, $createdAt, $updatedAt)
+            ";
+            cmd.Parameters.AddWithValue("$appName", cluster.AppName.ToLowerInvariant());
+            cmd.Parameters.AddWithValue("$clusterLabel", cluster.ClusterLabel);
+            cmd.Parameters.AddWithValue("$representativeWorkflowText", cluster.RepresentativeWorkflowText);
+            cmd.Parameters.AddWithValue("$workflowCount", cluster.WorkflowCount);
+            cmd.Parameters.AddWithValue("$createdAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            cmd.Parameters.AddWithValue("$updatedAt", DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        }
+
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task<List<string>> GetAppsWithWorkflowsAsync()
+    {
+        var apps = new List<string>();
+
+        var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            SELECT DISTINCT app_name
+            FROM semantic_workflows
+        ";
+
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            apps.Add(reader.GetString(0));
+        }
+
+        return apps;
+    }
+
+    public async Task<List<UIInteraction>> GetAllRecentUIInteractionsAsync(int minutes)
+    {
+        var interactions = new List<UIInteraction>();
+        var cutoffTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - (minutes * 60);
+
+        var cmd = _connection.CreateCommand();
+        cmd.CommandText = @"
+            SELECT id, app_name, window_title, interaction_type, element_name, simplified_description, timestamp, expires_at
+            FROM ui_interactions
+            WHERE timestamp >= $cutoffTime
+            ORDER BY app_name, timestamp ASC
+        ";
+        cmd.Parameters.AddWithValue("$cutoffTime", cutoffTime);
+
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var appNameValue = reader.GetString(1);
+            var interactionTypeValue = reader.GetString(3);
+            var simplifiedDescriptionValue = reader.GetString(5);
+
+            interactions.Add(new UIInteraction
+            {
+                Id = reader.GetInt32(0),
+                AppName = appNameValue,
+                WindowTitle = reader.IsDBNull(2) ? null : reader.GetString(2),
+                InteractionType = interactionTypeValue,
+                ElementName = reader.IsDBNull(4) ? null : reader.GetString(4),
+                SimplifiedDescription = simplifiedDescriptionValue,
+                Timestamp = reader.GetInt64(6),
+                ExpiresAt = reader.GetInt64(7)
+            });
+        }
+
+        return interactions;
     }
 
     public void Dispose()

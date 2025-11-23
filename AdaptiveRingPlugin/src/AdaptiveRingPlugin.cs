@@ -15,8 +15,16 @@ namespace Loupedeck.AdaptiveRingPlugin
         private GeminiActionSuggestor _geminiSuggestor = null!;
         private MCPPromptExecutor _mcpPromptExecutor = null!;
 
+        // New services for semantic workflow processing
+        private UIInteractionMonitor? _uiInteractionMonitor;
+        private SemanticWorkflowProcessor? _semanticWorkflowProcessor;
+        private VoyageAIClient? _voyageClient;
+        private VectorClusteringService? _vectorClusteringService;
+        private ActionRankingService? _actionRankingService;
+
         public ActionsRingManager ActionsRingManager { get; private set; } = null!;
         public MCPPromptExecutor McpPromptExecutor => _mcpPromptExecutor;
+        public ActionPersistenceService ActionPersistenceService => _persistenceService;
 
         // Gets a value indicating whether this is an API-only plugin.
         public override Boolean UsesApplicationApiOnly => true;
@@ -82,6 +90,9 @@ namespace Loupedeck.AdaptiveRingPlugin
             ActionsRingManager = new ActionsRingManager(_persistenceService, this);
             PluginLog.Info("✅ Actions Ring Manager initialized");
 
+            // Initialize semantic workflow processing services (optional - only if API keys are configured)
+            InitializeSemanticWorkflowServices();
+
             // Initialize the process monitor with all services
             _processMonitor = new ProcessMonitor(
                 _persistenceService,
@@ -95,10 +106,74 @@ namespace Loupedeck.AdaptiveRingPlugin
             PluginLog.Info("🚀 AdaptiveRing Plugin is now active!");
         }
 
+        private void InitializeSemanticWorkflowServices()
+        {
+            try
+            {
+                // Load API keys from environment variables
+                var voyageApiKey = Environment.GetEnvironmentVariable("VOYAGEAI_API_KEY");
+
+                if (string.IsNullOrEmpty(voyageApiKey))
+                {
+                    PluginLog.Info("⚠️ VoyageAI API key not configured - semantic workflow features disabled");
+                    return;
+                }
+
+                // Initialize VoyageAI client
+                _voyageClient = new VoyageAIClient(voyageApiKey);
+                PluginLog.Info("✅ VoyageAI Client initialized");
+
+                // Initialize Vector Clustering Service
+                _vectorClusteringService = new VectorClusteringService(_database);
+                PluginLog.Info("✅ Vector Clustering Service initialized");
+
+                // Initialize Action Ranking Service
+                _actionRankingService = new ActionRankingService(_database, _voyageClient);
+                PluginLog.Info("✅ Action Ranking Service initialized");
+
+                // Initialize UI Interaction Monitor
+                _uiInteractionMonitor = new UIInteractionMonitor(_database, _processMonitor);
+                _uiInteractionMonitor.Start();
+                PluginLog.Info("✅ UI Interaction Monitor started");
+
+                // Initialize Semantic Workflow Processor
+                _semanticWorkflowProcessor = new SemanticWorkflowProcessor(
+                    _database,
+                    _geminiSuggestor,
+                    _voyageClient,
+                    _vectorClusteringService
+                );
+                _semanticWorkflowProcessor.Start();
+                PluginLog.Info("✅ Semantic Workflow Processor started");
+
+                PluginLog.Info("🧠 Semantic workflow processing enabled");
+            }
+            catch (Exception ex)
+            {
+                PluginLog.Error($"Failed to initialize semantic workflow services: {ex.Message}");
+                PluginLog.Info("⚠️ Semantic workflow features disabled due to initialization error");
+            }
+        }
+
         // This method is called when the plugin is unloaded.
         public override void Unload()
         {
             PluginLog.Info("🛑 AdaptiveRing Plugin unloading...");
+
+            // Stop and dispose semantic workflow services
+            if (_semanticWorkflowProcessor != null)
+            {
+                _semanticWorkflowProcessor.Stop();
+                _semanticWorkflowProcessor.Dispose();
+                _semanticWorkflowProcessor = null;
+            }
+
+            if (_uiInteractionMonitor != null)
+            {
+                _uiInteractionMonitor.Stop();
+                _uiInteractionMonitor.Dispose();
+                _uiInteractionMonitor = null;
+            }
 
             // Stop and dispose the process monitor
             if (_processMonitor != null)
