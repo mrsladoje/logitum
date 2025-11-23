@@ -43,12 +43,19 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
         /// <summary>
         /// Execute an MCP prompt action.
         /// </summary>
-        public void Execute(AppAction action)
+        public async void Execute(AppAction action)
         {
             if (action.Type != ActionType.Prompt) return;
 
-            // Run async execution in background
-            Task.Run(async () => await ExecuteAsync(action));
+            try
+            {
+                await ExecuteAsync(action);
+            }
+            catch (Exception ex)
+            {
+                PluginLog.Error($"MCPPromptExecutor: Execute failed: {ex.Message}");
+                ShowNotification($"❌ MCP Execution Error: {ex.Message}");
+            }
         }
 
         private async Task ExecuteAsync(AppAction action)
@@ -74,7 +81,7 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
                 }
 
                 // Get or create MCP client connection
-                var mcpClient = GetOrCreateConnection(serverData.ServerName, serverData.StdioCommand);
+                var mcpClient = await GetOrCreateConnectionAsync(serverData.ServerName, serverData.StdioCommand);
                 if (mcpClient == null || !mcpClient.IsConnected)
                 {
                     PluginLog.Error($"MCPPromptExecutor: Failed to connect to MCP server");
@@ -114,24 +121,33 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
 
             ShowNotification($"🔧 Executing {promptData.ToolName}...");
 
-            var result = await mcpClient.CallToolAsync(promptData.ToolName, promptData.Parameters);
-
-            if (result != null)
+            try
             {
-                if (result.IsError)
+                var result = await mcpClient.CallToolAsync(promptData.ToolName, promptData.Parameters);
+
+                if (result != null)
                 {
-                    PluginLog.Error($"MCPPromptExecutor: Tool error: {result.Content}");
-                    ShowNotification($"❌ {promptData.ToolName}: {result.Content}");
+                    if (result.IsError)
+                    {
+                        PluginLog.Error($"MCPPromptExecutor: Tool error: {result.Content}");
+                        ShowNotification($"❌ {promptData.ToolName}: {TruncateResult(result.Content)}");
+                    }
+                    else
+                    {
+                        PluginLog.Info($"MCPPromptExecutor: Tool result: {result.Content}");
+                        ShowNotification($"✅ {promptData.ToolName}: {TruncateResult(result.Content)}");
+                    }
                 }
                 else
                 {
-                    PluginLog.Info($"MCPPromptExecutor: Tool result: {result.Content}");
-                    ShowNotification($"✅ {promptData.ToolName}: {TruncateResult(result.Content)}");
+                    PluginLog.Warning($"MCPPromptExecutor: Tool '{promptData.ToolName}' returned no result (may indicate initialization failure)");
+                    ShowNotification($"❌ {promptData.ToolName}: No result (check logs)");
                 }
             }
-            else
+            catch (Exception ex)
             {
-                ShowNotification($"❌ {promptData.ToolName} returned no result");
+                PluginLog.Error($"MCPPromptExecutor: Exception calling tool '{promptData.ToolName}': {ex.Message}");
+                ShowNotification($"❌ {promptData.ToolName}: {ex.Message}");
             }
         }
 
@@ -239,7 +255,7 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
             }
         }
 
-        private MCPClient? GetOrCreateConnection(string serverName, string stdioCommand)
+        private async Task<MCPClient?> GetOrCreateConnectionAsync(string serverName, string stdioCommand)
         {
             lock (_poolLock)
             {
@@ -248,38 +264,65 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
                     if (existingClient.IsConnected)
                     {
                         PluginLog.Info($"MCPPromptExecutor: Reusing connection to {serverName}");
+                        // Note: CallToolAsync and ListToolsAsync will check initialization if needed
                         return existingClient;
                     }
                     else
                     {
                         // Remove dead connection
+                        PluginLog.Warning($"MCPPromptExecutor: Removing dead connection to {serverName}");
                         existingClient.Dispose();
                         _connectionPool.Remove(serverName);
                     }
                 }
+            }
 
-                // Create new connection
-                PluginLog.Info($"MCPPromptExecutor: Creating new connection to {serverName}");
-                var newClient = new MCPClient(serverName, stdioCommand);
+            // Create new connection (outside lock to avoid blocking)
+            PluginLog.Info($"MCPPromptExecutor: Creating new connection to {serverName}");
+            var newClient = new MCPClient(serverName, stdioCommand);
 
-                if (newClient.IsConnected)
+            if (!newClient.IsConnected)
+            {
+                newClient.Dispose();
+                return null;
+            }
+
+            // Initialize the MCP connection
+            try
+            {
+                var initialized = await newClient.InitializeAsync();
+                if (!initialized)
                 {
-                    _connectionPool[serverName] = newClient;
-                    return newClient;
+                    PluginLog.Error($"MCPPromptExecutor: Failed to initialize connection to {serverName}");
+                    newClient.Dispose();
+                    return null;
                 }
 
+                PluginLog.Info($"MCPPromptExecutor: Successfully initialized connection to {serverName}");
+
+                lock (_poolLock)
+                {
+                    _connectionPool[serverName] = newClient;
+                }
+
+                return newClient;
+            }
+            catch (Exception ex)
+            {
+                PluginLog.Error($"MCPPromptExecutor: Error initializing connection to {serverName}: {ex.Message}");
+                newClient.Dispose();
                 return null;
             }
         }
 
         private async Task<MCPServerData?> GetServerDataAsync(string serverName)
         {
-            // Try to find the server in the mcp_cache or by searching registries
+            // Try to find the server in the mcp_cache
             var cmd = GetConnection().CreateCommand();
             cmd.CommandText = @"
-                SELECT server_json, connection_type, stdio_command, sse_url
+                SELECT server_json, connection_type, stdio_command, sse_url, server_name
                 FROM mcp_cache
-                WHERE server_name = $serverName
+                WHERE server_name = $serverName OR LOWER(server_name) = LOWER($serverName)
                 LIMIT 1
             ";
             cmd.Parameters.AddWithValue("$serverName", serverName);
@@ -292,16 +335,44 @@ namespace Loupedeck.AdaptiveRingPlugin.Services
 
                 if (serverData != null)
                 {
-                    // Update with connection info from cache if not in JSON
-                    serverData.ConnectionType = reader.IsDBNull(1) ? serverData.ConnectionType : reader.GetString(1);
-                    serverData.StdioCommand = reader.IsDBNull(2) ? serverData.StdioCommand : reader.GetString(2);
-                    serverData.SseUrl = reader.IsDBNull(3) ? serverData.SseUrl : reader.GetString(3);
-                }
+                    // Update with connection info from cache columns (prefer database columns over JSON)
+                    if (!reader.IsDBNull(1))
+                        serverData.ConnectionType = reader.GetString(1);
+                    if (!reader.IsDBNull(2))
+                        serverData.StdioCommand = reader.GetString(2);
+                    if (!reader.IsDBNull(3))
+                        serverData.SseUrl = reader.GetString(3);
 
-                return serverData;
+                    // Ensure we have connection info - if not in database columns, use JSON values
+                    if (string.IsNullOrEmpty(serverData.ConnectionType))
+                        serverData.ConnectionType = "stdio"; // Default to stdio
+                    if (string.IsNullOrEmpty(serverData.StdioCommand))
+                    {
+                        // Try to build stdio command from package name if available
+                        if (!string.IsNullOrEmpty(serverData.PackageName))
+                        {
+                            serverData.StdioCommand = BuildStdioCommand(serverData.PackageName);
+                        }
+                        else if (!string.IsNullOrEmpty(serverData.ServerName))
+                        {
+                            // Fallback: try to build from server name
+                            serverData.StdioCommand = BuildStdioCommand(serverData.ServerName);
+                        }
+                    }
+
+                    PluginLog.Info($"MCPPromptExecutor: Retrieved server data for {serverData.ServerName}, stdio: {serverData.StdioCommand ?? "null"}");
+                    return serverData;
+                }
             }
 
+            PluginLog.Warning($"MCPPromptExecutor: Server '{serverName}' not found in cache");
             return null;
+        }
+
+        private string BuildStdioCommand(string packageName)
+        {
+            // All MCP servers follow the npx pattern
+            return $"npx {packageName}";
         }
 
         private Microsoft.Data.Sqlite.SqliteConnection GetConnection()

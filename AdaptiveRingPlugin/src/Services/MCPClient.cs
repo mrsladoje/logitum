@@ -69,6 +69,15 @@ public class MCPClient : IDisposable
             _stdin = _process.StandardInput;
             _stdout = _process.StandardOutput;
 
+            // Check if process is still running after a brief moment
+            Task.Delay(500).Wait();
+            if (_process.HasExited)
+            {
+                PluginLog.Error($"MCPClient: Process exited immediately with code {_process.ExitCode}");
+                IsConnected = false;
+                return;
+            }
+
             IsConnected = true;
             PluginLog.Info($"MCPClient: Connected to {serverName}");
         }
@@ -89,6 +98,8 @@ public class MCPClient : IDisposable
 
         try
         {
+            PluginLog.Info($"MCPClient: Initializing connection to {ServerName}");
+
             var initRequest = new
             {
                 jsonrpc = "2.0",
@@ -106,14 +117,17 @@ public class MCPClient : IDisposable
                 }
             };
 
+            PluginLog.Verbose($"MCPClient: Sending initialize request");
             var response = await SendRequestAsync<JsonElement>(initRequest);
+            PluginLog.Info($"MCPClient: Received initialize response");
+
             _initialized = true;
 
             if (_initialized)
             {
                 // Send initialized notification
                 await SendNotificationAsync("notifications/initialized", new { });
-                PluginLog.Info($"MCPClient: Initialized connection to {ServerName}");
+                PluginLog.Info($"MCPClient: Successfully initialized connection to {ServerName}");
             }
 
             return _initialized;
@@ -121,6 +135,7 @@ public class MCPClient : IDisposable
         catch (Exception ex)
         {
             PluginLog.Error($"MCPClient: Initialization failed: {ex.Message}");
+            IsConnected = false; // Mark as disconnected on failure
             return false;
         }
     }
@@ -241,7 +256,7 @@ public class MCPClient : IDisposable
             var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var responseTask = _stdout.ReadLineAsync();
 
-            if (await Task.WhenAny(responseTask, Task.Delay(-1, cts.Token)) == responseTask)
+            if (await Task.WhenAny(responseTask, Task.Delay(TimeSpan.FromSeconds(30), cts.Token)) == responseTask)
             {
                 var responseLine = await responseTask;
 
@@ -250,6 +265,8 @@ public class MCPClient : IDisposable
                     throw new InvalidOperationException("MCP server returned empty response");
                 }
 
+                // Trim whitespace that might be present
+                responseLine = responseLine.Trim();
                 PluginLog.Verbose($"MCPClient: Received response: {responseLine}");
 
                 var response = JsonSerializer.Deserialize<JsonRpcResponse<T>>(responseLine);

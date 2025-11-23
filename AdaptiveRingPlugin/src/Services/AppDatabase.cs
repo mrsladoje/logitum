@@ -113,13 +113,16 @@ public class AppDatabase : IDisposable
     {
         var cmd = _connection.CreateCommand();
         cmd.CommandText = @"
-            INSERT OR REPLACE INTO mcp_cache (app_name, registry_source, server_name, server_json, cached_at)
-            VALUES ($appName, $registrySource, $serverName, $serverJson, datetime('now'))
+            INSERT OR REPLACE INTO mcp_cache (app_name, registry_source, server_name, server_json, cached_at, connection_type, stdio_command, sse_url)
+            VALUES ($appName, $registrySource, $serverName, $serverJson, datetime('now'), $connectionType, $stdioCommand, $sseUrl)
         ";
         cmd.Parameters.AddWithValue("$appName", appName.ToLowerInvariant());
         cmd.Parameters.AddWithValue("$registrySource", registrySource);
         cmd.Parameters.AddWithValue("$serverName", serverData.ServerName);
         cmd.Parameters.AddWithValue("$serverJson", JsonSerializer.Serialize(serverData));
+        cmd.Parameters.AddWithValue("$connectionType", serverData.ConnectionType ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$stdioCommand", serverData.StdioCommand ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("$sseUrl", serverData.SseUrl ?? (object)DBNull.Value);
 
         await cmd.ExecuteNonQueryAsync();
     }
